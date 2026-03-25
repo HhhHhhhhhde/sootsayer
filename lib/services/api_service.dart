@@ -405,38 +405,158 @@ class ApiService {
     }
   }
 
-  // 获取支付页面 HTML
+  // 兼容旧调用：后端已改为直接调用充值接口，不再返回支付页面 HTML
   static Future<Map<String, dynamic>> getPaymentPage(
     String token,
     double amount,
     String payMethod,
   ) async {
-    try {
-      final uri = Uri.parse('$baseUrl/assets/recharge').replace(
-        queryParameters: {
-          'amount': amount.toString(),
-          'payMethod': payMethod,
-        },
-      );
+    return recharge(token, amount, payMethod);
+  }
 
-      final response = await http.post(
-        uri,
+ // 获取账户余额（GET /api/assets/balance）
+ static Future<Map<String, dynamic>> getBalance(String token) async {
+ try {
+ final response = await http.get(
+ Uri.parse('$baseUrl/assets/balance'),
+ headers: {
+ 'Content-Type': 'application/json',
+ 'Authorization': 'Bearer $token',
+ },
+ );
+
+ if (response.statusCode !=200) {
+ return {
+ 'code': response.statusCode,
+ 'message': '获取余额失败',
+ 'data': null,
+ };
+ }
+
+ final result = jsonDecode(response.body) as Map<String, dynamic>;
+ final code = result['code'];
+ final isSuccess = code ==200 || code ==0 || code == '200' || code == '0';
+ if (!isSuccess) {
+ return result;
+ }
+
+ final data = result['data'];
+ double? balance;
+
+ if (data is num) {
+ balance = data.toDouble();
+ } else if (data is String) {
+ balance = double.tryParse(data);
+ } else if (data is Map<String, dynamic>) {
+ final amountRaw = data['balance'] ?? data['amount'] ?? data['value'];
+ if (amountRaw is num) {
+ balance = amountRaw.toDouble();
+ } else {
+ balance = double.tryParse(amountRaw?.toString() ?? '');
+ }
+ }
+
+ return {
+ 'code': code,
+ 'message': result['message'] ?? result['msg'] ?? 'success',
+ 'data': balance ??0.0,
+ };
+ } catch (e) {
+ return {
+ 'code': -1,
+ 'message': '网络错误: $e',
+ 'data': null,
+ };
+ }
+ }
+
+  // 查询支付状态（后端接口：GET /api/payment/status/{outTradeNo}）
+  static Future<Map<String, dynamic>> verifyPayment(
+    String token,
+    String outTradeNo,
+  ) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/payment/status/$outTradeNo'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
       );
 
-      print('Get payment page response status: ${response.statusCode}');
-      print('Get payment page response body length: ${response.body.length}');
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+
+      return {
+        'code': response.statusCode,
+        'message': '验证支付失败',
+        'data': null,
+      };
+    } catch (e) {
+      return {
+        'code': -1,
+        'message': '网络错误: $e',
+        'data': null,
+      };
+    }
+  }
+
+  // 订阅套餐
+ static Future<Map<String, dynamic>> subscribePlan(
+ String token,
+ String planType,
+ ) async {
+ try {
+ final uri = Uri.parse('$baseUrl/subscriptions').replace(
+ queryParameters: {
+ 'planType': planType,
+ },
+ );
+
+ final response = await http.post(
+ uri,
+ headers: {
+ 'Content-Type': 'application/json',
+ 'Authorization': 'Bearer $token',
+ },
+ );
+
+ if (response.statusCode ==200) {
+ return jsonDecode(response.body);
+ } else {
+ return {
+ 'code': response.statusCode,
+ 'message': '订阅失败',
+ 'data': null,
+ };
+ }
+ } catch (e) {
+ return {
+ 'code': -1,
+ 'message': '网络错误: $e',
+ 'data': null,
+ };
+ }
+ }
+
+  // 获取当前订阅
+  static Future<Map<String, dynamic>> getCurrentSubscription(String token) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/subscriptions/current'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
 
       if (response.statusCode == 200) {
-        final result = jsonDecode(response.body);
-        return result;
+        return jsonDecode(response.body);
       } else {
         return {
           'code': response.statusCode,
-          'message': '获取支付页面失败',
+          'message': '获取当前订阅失败',
           'data': null,
         };
       }

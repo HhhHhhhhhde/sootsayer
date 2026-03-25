@@ -17,11 +17,28 @@ class _RechargeScreenState extends State<RechargeScreen> {
   final _customAmountController = TextEditingController();
   String _selectedPaymentMethod = 'wechat';
   bool _isProcessing = false;
+  double _currentBalance = 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBalance();
+  }
 
   @override
   void dispose() {
     _customAmountController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadBalance() async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final balance = await authProvider.getBalance();
+    if (mounted) {
+      setState(() {
+        _currentBalance = balance ?? 0.0;
+      });
+    }
   }
 
   int? _getSelectedAmount() {
@@ -91,35 +108,54 @@ class _RechargeScreenState extends State<RechargeScreen> {
 
   Future<void> _processRecharge(double amount) async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    
+
     setState(() => _isProcessing = true);
-    
+
     final payMethod = _selectedPaymentMethod == 'wechat' ? 'WECHAT' : 'ALIPAY';
-    final result = await authProvider.getPaymentPage(amount, payMethod);
-    
+    final paymentPage = await authProvider.getPaymentPage(amount, payMethod);
+
     if (!mounted) return;
     setState(() => _isProcessing = false);
-    
-    if (result != null && result['htmlContent'] != null) {
-      // 跳转到支付页面
-      if (!mounted) return;
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => PaymentPageScreen(
-            htmlContent: result['htmlContent'],
-            paymentMethod: payMethod,
-            amount: amount,
-          ),
-        ),
-      );
-    } else {
+
+    if (paymentPage == null || paymentPage['code'] != 200) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(result?['message'] ?? '获取支付页面失败'),
+          content: Text(authProvider.errorMessage ?? paymentPage?['message']?.toString() ?? '创建支付失败'),
           backgroundColor: Colors.red,
         ),
       );
+      return;
+    }
+
+    final htmlContent = paymentPage['htmlContent']?.toString() ?? '';
+    final outTradeNo = paymentPage['outTradeNo']?.toString() ?? '';
+
+    if (htmlContent.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('支付页面为空，请稍后重试'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final paymentCompleted = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PaymentPageScreen(
+          htmlContent: htmlContent,
+          paymentMethod: payMethod,
+          amount: amount,
+          outTradeNo: outTradeNo,
+        ),
+      ),
+    );
+
+    if (paymentCompleted == true) {
+      await _loadBalance();
+      if (!mounted) return;
+      _showSuccessDialog(amount);
     }
   }
 
@@ -217,7 +253,7 @@ class _RechargeScreenState extends State<RechargeScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '¥0.00',
+                      '¥${_currentBalance.toStringAsFixed(2)}',
                       style: TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.bold,

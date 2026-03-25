@@ -50,29 +50,16 @@ class ApkService {
       final pathEntity = FileSystemEntity.typeSync(apkPathOrDir);
       File fileToUpload;
 
-      if (pathEntity == FileSystemEntityType.directory) {
-        // If it's a directory with split APKs, compress it to zip
-        print("APK path is a directory, compressing to zip");
-        final dir = Directory(apkPathOrDir);
-        
-        // Verify directory has files
-        final files = dir.listSync();
-        if (files.isEmpty) {
-          print("Directory is empty: $apkPathOrDir");
-          return null;
-        }
+ if (pathEntity == FileSystemEntityType.directory) {
+ // 如果是目录（可能包含多个 split目录），先合并所有 split APK 再打包
+ print("APK path is a directory, preparing merged split APK artifact");
+ fileToUpload = await _prepareMergedSplitsZip(apkPathOrDir);
 
-        print("Files in directory: ${files.map((f) => f.path).toList()}");
-
-        // Create zip file
-        final zipPath = '${dir.path}.zip';
-        fileToUpload = await _compressDirectoryToZip(apkPathOrDir, zipPath);
-        
-        if (!fileToUpload.existsSync()) {
-          print("Failed to create zip file: $zipPath");
-          return null;
-        }
-      } else {
+ if (!fileToUpload.existsSync()) {
+ print("Failed to create merged split zip for: $apkPathOrDir");
+ return null;
+ }
+ } else {
         // It's a file
         fileToUpload = File(apkPathOrDir);
         if (!fileToUpload.existsSync()) {
@@ -159,26 +146,86 @@ class ApkService {
     }
   }
 
-  static Future<File> _compressDirectoryToZip(String dirPath, String zipPath) async {
-    final dir = Directory(dirPath);
-    final encoder = ZipFileEncoder();
-    
-    encoder.create(zipPath);
-    
-    // Add all files from directory to zip
-    final files = dir.listSync(recursive: true);
-    for (var file in files) {
-      if (file is File) {
-        final relativePath = path.relative(file.path, from: dir.path);
-        encoder.addFile(file, relativePath);
-      }
-    }
-    
-    encoder.close();
-    print("Zip file created: $zipPath");
-    
-    return File(zipPath);
-  }
+ static Future<File> _prepareMergedSplitsZip(String rootDirPath) async {
+ final rootDir = Directory(rootDirPath);
+ if (!rootDir.existsSync()) {
+ throw Exception('Directory not found: $rootDirPath');
+ }
+
+ final allEntities = rootDir.listSync(recursive: true);
+ final apkFiles = allEntities
+ .whereType<File>()
+ .where((f) => f.path.toLowerCase().endsWith('.apk'))
+ .toList();
+
+ if (apkFiles.isEmpty) {
+ throw Exception('No APK files found under: $rootDirPath');
+ }
+
+ // 检测是否存在多个子目录（用户要求多目录时在前端做合并）
+ final topLevelDirs = rootDir
+ .listSync()
+ .whereType<Directory>()
+ .map((d) => d.path)
+ .toSet();
+ if (topLevelDirs.length >1) {
+ print('Detected multiple split directories: ${topLevelDirs.toList()}');
+ print('Merging split APK files from multiple directories on frontend');
+ }
+
+ final cacheDir = await getApplicationCacheDirectory();
+ final mergeRoot = Directory('${cacheDir.path}/merged_splits');
+ if (!mergeRoot.existsSync()) {
+ mergeRoot.createSync(recursive: true);
+ }
+
+ final mergedDirName =
+ 'merged_${DateTime.now().millisecondsSinceEpoch}_${path.basename(rootDirPath)}';
+ final mergedDir = Directory('${mergeRoot.path}/$mergedDirName');
+ mergedDir.createSync(recursive: true);
+
+ final usedNames = <String>{};
+ for (final apk in apkFiles) {
+ final relativePath = path.relative(apk.path, from: rootDir.path);
+ final sanitizedRelative = relativePath.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+
+ var targetName = sanitizedRelative;
+ var index =1;
+ while (usedNames.contains(targetName)) {
+ final base = path.basenameWithoutExtension(sanitizedRelative);
+ targetName = '${base}_$index.apk';
+ index++;
+ }
+ usedNames.add(targetName);
+
+ final targetFile = File('${mergedDir.path}/$targetName');
+ await apk.copy(targetFile.path);
+ }
+
+ final zipPath = '${mergedDir.path}.zip';
+ return _compressDirectoryToZip(mergedDir.path, zipPath);
+ }
+
+ static Future<File> _compressDirectoryToZip(String dirPath, String zipPath) async {
+ final dir = Directory(dirPath);
+ final encoder = ZipFileEncoder();
+
+ encoder.create(zipPath);
+
+ // Add all files from directory to zip
+ final files = dir.listSync(recursive: true);
+ for (var file in files) {
+ if (file is File) {
+ final relativePath = path.relative(file.path, from: dir.path);
+ encoder.addFile(file, relativePath);
+ }
+ }
+
+ encoder.close();
+ print("Zip file created: $zipPath");
+
+ return File(zipPath);
+ }
 
   static Map<String, dynamic> _parseJson(String jsonString) {
     try {

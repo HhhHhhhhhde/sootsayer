@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../providers/auth_provider.dart';
 
 class BalanceRecord {
   final DateTime dateTime;
@@ -22,17 +25,31 @@ class BalanceRecordsScreen extends StatefulWidget {
 }
 
 class _BalanceRecordsScreenState extends State<BalanceRecordsScreen> {
-  late DateTime _startDate;
-  late DateTime _endDate;
-  int _currentPage = 1;
-  final int _pageSize = 10;
+ late DateTime _startDate;
+ late DateTime _endDate;
+ int _currentPage =1;
+ final int _pageSize =10;
+ double _currentBalance =0.0;
+ bool _isLoadingBalance = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _endDate = DateTime.now();
-    _startDate = _endDate.subtract(const Duration(days: 30));
-  }
+ @override
+ void initState() {
+ super.initState();
+ _endDate = DateTime.now();
+ _startDate = _endDate.subtract(const Duration(days:30));
+ _refreshBalanceByGet();
+ }
+
+ Future<void> _refreshBalanceByGet() async {
+ setState(() => _isLoadingBalance = true);
+ final authProvider = Provider.of<AuthProvider>(context, listen: false);
+ final balance = await authProvider.getBalance();
+ if (!mounted) return;
+ setState(() {
+ _currentBalance = balance ??0.0;
+ _isLoadingBalance = false;
+ });
+ }
 
   List<BalanceRecord> _getMockRecords() {
     final records = <BalanceRecord>[
@@ -284,14 +301,20 @@ class _BalanceRecordsScreenState extends State<BalanceRecordsScreen> {
                       style: TextStyle(fontSize: 12, color: Colors.grey),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      '¥0.00',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Theme.of(context).primaryColor,
-                      ),
-                    ),
+ _isLoadingBalance
+ ? const SizedBox(
+ width:24,
+ height:24,
+ child: CircularProgressIndicator(strokeWidth:2),
+ )
+ : Text(
+ '¥${_currentBalance.toStringAsFixed(2)}',
+ style: TextStyle(
+ fontSize:24,
+ fontWeight: FontWeight.bold,
+ color: Theme.of(context).primaryColor,
+ ),
+ ),
                   ],
                 ),
                 ElevatedButton.icon(

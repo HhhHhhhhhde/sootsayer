@@ -65,12 +65,6 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildInfoCard(
-                    icon: Icons.person,
-                    label: '用户ID',
-                    value: userInfo['id']?.toString() ?? '未设置',
-                  ),
-                  const SizedBox(height: 12),
-                  _buildInfoCard(
                     icon: Icons.account_circle,
                     label: '用户名',
                     value: userInfo['username'] ?? '未设置',

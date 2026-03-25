@@ -10,15 +10,15 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  int _currentStep = 0; // 0: 填写信息, 1: 验证码, 2: 完成
-  
+  int _currentStep = 0; // 0: 注册表单(含验证码), 1: 完成
+
   final _usernameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _verificationCodeController = TextEditingController();
-  
+
   bool _passwordVisible = false;
   bool _confirmPasswordVisible = false;
   bool _codeSent = false;
@@ -40,7 +40,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _codeSent = true;
       _countdownSeconds = 10;
     });
-    
+
     _decrementCountdown();
   }
 
@@ -62,6 +62,96 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return hasLetter && hasDigit;
   }
 
+  Future<void> _sendVerificationCode() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先输入邮箱')),
+      );
+      return;
+    }
+
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final success = await authProvider.sendVerifyCode(email, 'REGISTER');
+
+    if (!mounted) return;
+
+    if (success) {
+      _startCountdown();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('验证码已发送至邮箱')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(authProvider.errorMessage ?? '发送验证码失败')),
+      );
+    }
+  }
+
+  Future<void> _register() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    final confirmPassword = _confirmPasswordController.text;
+    final verifyCode = _verificationCodeController.text.trim();
+
+    if (email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请输入邮箱')),
+      );
+      return;
+    }
+
+    if (password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请输入密码')),
+      );
+      return;
+    }
+
+    if (!_isPasswordValid(password)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('密码必须至少8位，且包含字母和数字')),
+      );
+      return;
+    }
+
+    if (password != confirmPassword) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('两次输入的密码不一致')),
+      );
+      return;
+    }
+
+    if (verifyCode.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请输入验证码')),
+      );
+      return;
+    }
+
+    final username = _usernameController.text.trim();
+    final phone = _phoneController.text.trim();
+
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final success = await authProvider.register(
+      email,
+      password,
+      verifyCode,
+      username: username.isEmpty ? null : username,
+      phone: phone.isEmpty ? null : phone,
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      setState(() => _currentStep = 1);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(authProvider.errorMessage ?? '注册失败')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -75,20 +165,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
       body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (_currentStep == 0) _buildFillInfoStep(),
-              if (_currentStep == 1) _buildVerificationStep(),
-              if (_currentStep == 2) _buildCompleteStep(),
-            ],
-          ),
+          child: _currentStep == 0 ? _buildRegisterForm() : _buildCompleteStep(),
         ),
       ),
     );
   }
 
-  Widget _buildFillInfoStep() {
+  Widget _buildRegisterForm() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -101,15 +184,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ),
         const SizedBox(height: 8),
         const Text(
-          '请填写您的邮箱和密码',
+          '请填写邮箱、密码并获取验证码后完成注册',
           style: TextStyle(
             fontSize: 14,
             color: Colors.grey,
           ),
         ),
         const SizedBox(height: 32),
-        
-        // 用户名输入框（可选）
+
         TextField(
           controller: _usernameController,
           decoration: InputDecoration(
@@ -122,8 +204,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        
-        // 邮箱输入框
+
         TextField(
           controller: _emailController,
           decoration: InputDecoration(
@@ -137,8 +218,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           keyboardType: TextInputType.emailAddress,
         ),
         const SizedBox(height: 16),
-        
-        // 手机号输入框（可选）
+
         TextField(
           controller: _phoneController,
           decoration: InputDecoration(
@@ -153,25 +233,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
           maxLength: 11,
         ),
         const SizedBox(height: 16),
-        
-        // 密码输入框
+
         TextField(
           controller: _passwordController,
           obscureText: !_passwordVisible,
-          onChanged: (value) {
-            setState(() {});
-          },
+          onChanged: (_) => setState(() {}),
           decoration: InputDecoration(
             labelText: '密码',
             hintText: '请设置密码（至少8位，需包含字母和数字）',
             prefixIcon: const Icon(Icons.lock_outlined),
             suffixIcon: IconButton(
-              icon: Icon(
-                _passwordVisible ? Icons.visibility : Icons.visibility_off,
-              ),
-              onPressed: () {
-                setState(() => _passwordVisible = !_passwordVisible);
-              },
+              icon: Icon(_passwordVisible ? Icons.visibility : Icons.visibility_off),
+              onPressed: () => setState(() => _passwordVisible = !_passwordVisible),
             ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
@@ -188,22 +261,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 Row(
                   children: [
                     Icon(
-                      _passwordController.text.length >= 8
-                          ? Icons.check_circle
-                          : Icons.cancel,
+                      _passwordController.text.length >= 8 ? Icons.check_circle : Icons.cancel,
                       size: 16,
-                      color: _passwordController.text.length >= 8
-                          ? Colors.green
-                          : Colors.red,
+                      color: _passwordController.text.length >= 8 ? Colors.green : Colors.red,
                     ),
                     const SizedBox(width: 4),
                     Text(
                       '至少8位',
                       style: TextStyle(
                         fontSize: 12,
-                        color: _passwordController.text.length >= 8
-                            ? Colors.green
-                            : Colors.red,
+                        color: _passwordController.text.length >= 8 ? Colors.green : Colors.red,
                       ),
                     ),
                   ],
@@ -221,10 +288,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           : Colors.red,
                     ),
                     const SizedBox(width: 4),
-                    const Text(
-                      '包含字母',
-                      style: TextStyle(fontSize: 12),
-                    ),
+                    const Text('包含字母', style: TextStyle(fontSize: 12)),
                   ],
                 ),
                 const SizedBox(height: 4),
@@ -240,18 +304,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           : Colors.red,
                     ),
                     const SizedBox(width: 4),
-                    const Text(
-                      '包含数字',
-                      style: TextStyle(fontSize: 12),
-                    ),
+                    const Text('包含数字', style: TextStyle(fontSize: 12)),
                   ],
                 ),
               ],
             ),
           ),
         const SizedBox(height: 16),
-        
-        // 确认密码输入框
+
         TextField(
           controller: _confirmPasswordController,
           obscureText: !_confirmPasswordVisible,
@@ -272,112 +332,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ),
           ),
         ),
-        const SizedBox(height: 24),
-        
-        // 下一步按钮
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: () {
-              final email = _emailController.text.trim();
-              final password = _passwordController.text;
-              final confirmPassword = _confirmPasswordController.text;
+        const SizedBox(height: 16),
 
-              if (email.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('请输入邮箱')),
-                );
-                return;
-              }
-
-              if (password.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('请输入密码')),
-                );
-                return;
-              }
-
-              if (!_isPasswordValid(password)) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('密码必须至少8位，且包含字母和数字')),
-                );
-                return;
-              }
-
-              if (password != confirmPassword) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('两次输入的密码不一致')),
-                );
-                return;
-              }
-
-              setState(() => _currentStep = 1);
-            },
-            style: ElevatedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              backgroundColor: Theme.of(context).primaryColor,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('下一步'),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildVerificationStep() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          '验证身份',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 8),
-        const Text(
-          '我们已向您的邮箱发送验证码',
-          style: TextStyle(
-            fontSize: 14,
-            color: Colors.grey,
-          ),
-        ),
-        const SizedBox(height: 32),
-        
-        // 显示接收地址
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.grey.shade100,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            children: [
-              const Icon(
-                Icons.email_outlined,
-                color: Colors.grey,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  _emailController.text,
-                  style: const TextStyle(fontSize: 14),
-                ),
-              ),
-              TextButton(
-                onPressed: () {
-                  setState(() => _currentStep = 0);
-                },
-                child: const Text('修改'),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 24),
-        
-        // 验证码输入框
         TextField(
           controller: _verificationCodeController,
           decoration: InputDecoration(
@@ -391,39 +347,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
           keyboardType: TextInputType.number,
           maxLength: 6,
         ),
-        const SizedBox(height: 16),
-        
-        // 获取验证码按钮
+        const SizedBox(height: 8),
+
         SizedBox(
           width: double.infinity,
           child: ElevatedButton(
-            onPressed: _codeSent && _countdownSeconds > 0
-                ? null
-                : () async {
-                    final email = _emailController.text.trim();
-                    if (email.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('请先输入邮箱')),
-                      );
-                      return;
-                    }
-
-                    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-                    final success = await authProvider.sendVerifyCode(email, 'REGISTER');
-
-                    if (!mounted) return;
-
-                    if (success) {
-                      _startCountdown();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('验证码已发送至邮箱')),
-                      );
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(authProvider.errorMessage ?? '发送验证码失败')),
-                      );
-                    }
-                  },
+            onPressed: _codeSent && _countdownSeconds > 0 ? null : _sendVerificationCode,
             style: ElevatedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 16),
               backgroundColor: Theme.of(context).primaryColor,
@@ -449,67 +378,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
           ),
         ),
         const SizedBox(height: 24),
-        
-        // 验证并创建账户按钮
+
         SizedBox(
           width: double.infinity,
           child: ElevatedButton(
-            onPressed: () async {
-              final email = _emailController.text.trim();
-              final password = _passwordController.text;
-              final confirmPassword = _confirmPasswordController.text;
-              final verifyCode = _verificationCodeController.text.trim();
-
-              if (email.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('请输入邮箱')),
-                );
-                return;
-              }
-
-              if (password.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('请输入密码')),
-                );
-                return;
-              }
-
-              if (password != confirmPassword) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('两次输入的密码不一致')),
-                );
-                return;
-              }
-
-              if (verifyCode.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('请输入验证码')),
-                );
-                return;
-              }
-
-              final username = _usernameController.text.trim();
-              final phone = _phoneController.text.trim();
-
-              final authProvider = Provider.of<AuthProvider>(context, listen: false);
-              final success = await authProvider.register(
-                email,
-                password,
-                verifyCode,
-                username: username.isEmpty ? null : username,
-                phone: phone.isEmpty ? null : phone,
-              );
-
-              if (!mounted) return;
-
-              if (success) {
-                setState(() => _currentStep = 2);
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(authProvider.errorMessage ?? '注册失败')),
-                );
-              }
-            },
+            onPressed: _register,
             style: ElevatedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 16),
               backgroundColor: Theme.of(context).primaryColor,
@@ -531,27 +404,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ),
           ),
         ),
-        const SizedBox(height: 12),
-        
-        // 返回按钮
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton(
-            onPressed: () {
-              setState(() => _currentStep = 0);
-            },
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-            ),
-            child: const Text('返回'),
-          ),
-        ),
       ],
     );
   }
 
   Widget _buildCompleteStep() {
-    // 自动跳转到主页
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) {
         Navigator.popUntil(context, (route) => route.isFirst);
@@ -602,8 +459,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 48),
-        
-        // 立即返回按钮
         SizedBox(
           width: double.infinity,
           child: ElevatedButton(

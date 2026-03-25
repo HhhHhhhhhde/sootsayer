@@ -1,4 +1,10 @@
 import 'package:flutter/foundation.dart';
+import 'dart:convert';
+import 'dart:math';
+import '../services/api_service.dart';
+import 'package:flutter/foundation.dart';
+import 'dart:convert';
+import 'dart:math';
 import '../services/api_service.dart';
 
 class AuthProvider extends ChangeNotifier {
@@ -325,34 +331,52 @@ class AuthProvider extends ChangeNotifier {
 
       final code = result['code'];
       final isSuccess = code == 200 || code == 0 || code == '200' || code == '0';
-
-      if (isSuccess && result['data'] != null) {
-        // 后端返回的 data 可能是 HTML 字符串或包含 HTML 的对象
-        final data = result['data'];
-        String htmlContent = '';
-        
-        if (data is String) {
-          htmlContent = data;
-        } else if (data is Map && data['html'] != null) {
-          htmlContent = data['html'];
-        } else if (data is Map && data['htmlContent'] != null) {
-          htmlContent = data['htmlContent'];
-        }
-
-        return {
-          'code': 200,
-          'htmlContent': htmlContent,
-          'message': 'success',
-        };
-      } else {
+      if (!isSuccess) {
         _errorMessage = result['msg'] ?? result['message'] ?? '获取支付页面失败';
         notifyListeners();
         return {
           'code': result['code'] ?? 500,
           'message': _errorMessage,
           'htmlContent': null,
+          'outTradeNo': null,
         };
       }
+
+ final data = result['data'];
+ print('responseData.data 原文: ${data is String ? data : jsonEncode(data)}');
+ String htmlContent = '';
+ String outTradeNo = '';
+
+      if (data is String) {
+        htmlContent = data;
+
+        final outTradeNoMatch = RegExp(r'&quot;out_trade_no&quot;:&quot;([^&]+)&quot;')
+            .firstMatch(data);
+        if (outTradeNoMatch != null) {
+          outTradeNo = outTradeNoMatch.group(1) ?? '';
+        }
+      } else if (data is Map<String, dynamic>) {
+        htmlContent = data['html']?.toString() ?? data['htmlContent']?.toString() ?? '';
+        outTradeNo = data['outTradeNo']?.toString() ?? data['out_trade_no']?.toString() ?? '';
+      }
+
+      if (htmlContent.isEmpty) {
+        _errorMessage = '支付页面数据为空';
+        notifyListeners();
+        return {
+          'code': -1,
+          'message': _errorMessage,
+          'htmlContent': null,
+          'outTradeNo': null,
+        };
+      }
+
+      return {
+        'code': 200,
+        'message': 'success',
+        'htmlContent': htmlContent,
+        'outTradeNo': outTradeNo,
+      };
     } catch (e) {
       _isLoading = false;
       _errorMessage = '网络错误: $e';
@@ -361,7 +385,106 @@ class AuthProvider extends ChangeNotifier {
         'code': -1,
         'message': _errorMessage,
         'htmlContent': null,
+        'outTradeNo': null,
       };
+    }
+  }
+
+  Future<double?> getBalance() async {
+    try {
+      final result = await ApiService.getBalance(_sessionToken ?? '');
+
+      print('getBalance result: $result');
+
+      final code = result['code'];
+      final isSuccess = code == 200 || code == 0 || code == '200' || code == '0';
+
+      if (isSuccess && result['data'] != null) {
+        final data = result['data'];
+        if (data is num) {
+          return data.toDouble();
+        } else if (data is String) {
+          return double.tryParse(data);
+        }
+        return 0.0;
+      } else {
+        print('Failed to get balance: ${result['message']}');
+        return null;
+      }
+    } catch (e) {
+      print('Error getting balance: $e');
+      return null;
+    }
+  }
+
+  Future<String?> verifyPayment(String outTradeNo) async {
+    try {
+      final result = await ApiService.verifyPayment(
+        _sessionToken ?? '',
+        outTradeNo,
+      );
+
+      print('verifyPayment result: $result');
+
+      final code = result['code'];
+      final isSuccess = code == 200 || code == 0 || code == '200' || code == '0';
+
+      if (isSuccess && result['data'] != null) {
+        return result['data'].toString();
+      } else {
+        _errorMessage = result['message'] ?? '验证支付失败';
+        return null;
+      }
+    } catch (e) {
+      print('Error verifying payment: $e');
+      return null;
+    }
+  }
+
+  Future<bool> subscribePlan(String planType) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final result = await ApiService.subscribePlan(_sessionToken ?? '', planType);
+      _isLoading = false;
+
+      final code = result['code'];
+      final isSuccess = code == 200 || code == 0 || code == '200' || code == '0';
+
+      if (isSuccess) {
+        notifyListeners();
+        return true;
+      } else {
+        _errorMessage = result['msg'] ?? result['message'] ?? '订阅失败';
+        notifyListeners();
+        return false;
+      }
+    } catch (e) {
+      _isLoading = false;
+      _errorMessage = '网络错误: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<Map<String, dynamic>?> getCurrentSubscription() async {
+    try {
+      final result = await ApiService.getCurrentSubscription(_sessionToken ?? '');
+
+      final code = result['code'];
+      final isSuccess = code == 200 || code == 0 || code == '200' || code == '0';
+
+      if (isSuccess) {
+        return result['data'] as Map<String, dynamic>?;
+      }
+
+      _errorMessage = result['msg'] ?? result['message'] ?? '获取当前订阅失败';
+      return null;
+    } catch (e) {
+      _errorMessage = '网络错误: $e';
+      return null;
     }
   }
 }
