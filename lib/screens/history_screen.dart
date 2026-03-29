@@ -250,7 +250,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                '${_formatFileSize(result.fileSize)}  •  ${_formatDate(result.submitTime)}',
+                                '${_formatDate(result.submitTime)}',
                                 style: TextStyle(
                                     fontSize: 12,
                                     color: Colors.grey.shade600),

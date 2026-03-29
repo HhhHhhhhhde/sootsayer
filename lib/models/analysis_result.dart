@@ -46,11 +46,13 @@ class AnalysisResult {
       updateTime: json['updateTime'] != null
           ? DateTime.tryParse(json['updateTime'].toString())
           : null,
+      vulnerabilities: (json['leakCount'] as num?)?.toInt(),
     );
   }
 
   /// Construct from backend GET /api/tasks/{id}/status response.
   AnalysisResult withStatusJson(Map<String, dynamic> json) {
+    final leak = json['leakCount'];
     return copyWith(
       status: json['status']?.toString(),
       progress: (json['progress'] as num?)?.toInt(),
@@ -58,6 +60,7 @@ class AnalysisResult {
       updateTime: json['updateTime'] != null
           ? DateTime.tryParse(json['updateTime'].toString())
           : null,
+      vulnerabilities: leak != null ? (leak as num).toInt() : null,
     );
   }
 

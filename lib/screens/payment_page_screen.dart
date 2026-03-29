@@ -44,6 +44,8 @@ class _PaymentPageScreenState extends State<PaymentPageScreen> {
   /// Unescape JSON/HTML encoding artifacts that may be present in the
   /// HTML string returned by the backend, and fix any duplicated gateway paths.
   String _normalizeHtml(String raw) {
+    debugPrint('[PaymentPage] _normalizeHtml input length: ${raw.length}');
+    debugPrint('[PaymentPage] _normalizeHtml input preview: ${raw.length > 300 ? raw.substring(0, 300) : raw}');
     var html = raw.trim();
 
     // Unescape JSON-escaped sequences
@@ -64,12 +66,15 @@ class _PaymentPageScreenState extends State<PaymentPageScreen> {
       'https://openapi-sandbox.dl.alipaydev.com/gateway.do',
     );
 
+    debugPrint('[PaymentPage] normalizeHtml output len=${html.length}');
     return html;
   }
 
   void _initializeWebView() {
+    debugPrint('[PaymentPage] initWebView outTradeNo=${widget.outTradeNo} amount=${widget.amount}');
     final html = _normalizeHtml(widget.htmlContent);
     final htmlBase64 = base64Encode(utf8.encode(html));
+    debugPrint('[PaymentPage] dataURI base64Len=${htmlBase64.length}');
     final dataUri = Uri.parse('data:text/html;base64,$htmlBase64');
 
     _webViewController = WebViewController()
@@ -83,10 +88,12 @@ class _PaymentPageScreenState extends State<PaymentPageScreen> {
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageStarted: (String url) {
+            debugPrint('[PaymentPage] onPageStarted: $url');
             if (!mounted) return;
             setState(() => _isLoading = true);
           },
           onPageFinished: (String url) {
+            debugPrint('[PaymentPage] onPageFinished: $url');
             if (!mounted) return;
             setState(() => _isLoading = false);
             _checkPaymentStatus();
@@ -94,11 +101,12 @@ class _PaymentPageScreenState extends State<PaymentPageScreen> {
           onWebResourceError: (WebResourceError error) {
             // Only log non-trivial errors
             if (error.errorCode != -1) {
-              debugPrint('WebView error [${error.errorCode}]: ${error.description}');
+              debugPrint('[PaymentPage] WebView error [${error.errorCode}]: ${error.description} url=${error.url}');
             }
           },
           onNavigationRequest: (NavigationRequest request) {
             final url = request.url;
+            debugPrint('[PaymentPage] onNavigationRequest: $url');
             if (url.contains('return_url') ||
                 url.contains('notify') ||
                 (url.contains('success') && !url.contains('alipay'))) {
@@ -143,18 +151,22 @@ class _PaymentPageScreenState extends State<PaymentPageScreen> {
 
   Future<void> _verifyPaymentWithBackend() async {
     if (_paymentCompleted || _isVerifying) return;
+    debugPrint('[PaymentPage] verifyPaymentWithBackend outTradeNo=${widget.outTradeNo}');
     if (mounted) setState(() => _isVerifying = true);
     _checkTimer?.cancel();
 
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final result = await authProvider.verifyPayment(widget.outTradeNo);
+      debugPrint('[PaymentPage] verifyPayment result: $result');
 
       if (!mounted) return;
 
       if (result == 'SUCCESS' || result == 'ALREADY_CREDITED') {
+        debugPrint('[PaymentPage] payment SUCCESS');
         await _handlePaymentSuccess();
       } else if (result == 'PENDING') {
+        debugPrint('[PaymentPage] payment PENDING');
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('\u652f\u4ed8\u5904\u7406\u4e2d\uff0c\u8bf7\u7a0d\u5019...'),

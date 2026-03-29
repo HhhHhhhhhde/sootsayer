@@ -305,18 +305,21 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      debugPrint('[Payment] getPaymentPage called: amount=$amount method=$payMethod');
       final result = await ApiService.getPaymentPage(
         _sessionToken ?? '',
         amount,
         payMethod,
       );
       _isLoading = false;
+      debugPrint('[Payment] raw backend response: $result');
 
       final code = result['code'];
       final isSuccess =
           code == 200 || code == 0 || code == '200' || code == '0';
       if (!isSuccess) {
         _errorMessage = result['msg'] ?? result['message'] ?? '获取支付页面失败';
+        debugPrint('[Payment] backend returned error: code=$code msg=$_errorMessage');
         notifyListeners();
         return {
           'code': result['code'] ?? 500,
@@ -329,8 +332,12 @@ class AuthProvider extends ChangeNotifier {
       // 后端返回 Result<PaymentResult>:
       // data = { outTradeNo, paymentUrl (支付宝HTML表单), qrCode, expireTime }
       final data = result['data'];
+      debugPrint('[Payment] data field type: ${data.runtimeType}');
+      debugPrint('[Payment] data value: $data');
+
       if (data is! Map<String, dynamic>) {
         _errorMessage = '支付数据格式错误';
+        debugPrint('[Payment] ERROR: data is not a Map, got ${data.runtimeType}');
         notifyListeners();
         return {
           'code': -1,
@@ -348,8 +355,13 @@ class AuthProvider extends ChangeNotifier {
           data['out_trade_no']?.toString() ??
           '';
 
+      debugPrint('[Payment] outTradeNo: $outTradeNo');
+      debugPrint('[Payment] htmlContent length: ${htmlContent.length}');
+      debugPrint('[Payment] htmlContent preview: ${htmlContent.length > 200 ? htmlContent.substring(0, 200) : htmlContent}');
+
       if (htmlContent.isEmpty) {
         _errorMessage = '支付页面数据为空';
+        debugPrint('[Payment] ERROR: htmlContent is empty, data keys: ${data.keys.toList()}');
         notifyListeners();
         return {
           'code': -1,
@@ -361,6 +373,7 @@ class AuthProvider extends ChangeNotifier {
 
       if (outTradeNo.isEmpty) {
         _errorMessage = '订单号缺失，无法完成支付验证';
+        debugPrint('[Payment] ERROR: outTradeNo is empty, data keys: ${data.keys.toList()}');
         notifyListeners();
         return {
           'code': -1,
@@ -370,6 +383,7 @@ class AuthProvider extends ChangeNotifier {
         };
       }
 
+      debugPrint('[Payment] getPaymentPage SUCCESS: outTradeNo=$outTradeNo htmlLen=${htmlContent.length}');
       return {
         'code': 200,
         'message': 'success',
@@ -379,6 +393,7 @@ class AuthProvider extends ChangeNotifier {
     } catch (e) {
       _isLoading = false;
       _errorMessage = '网络错误: $e';
+      debugPrint('[Payment] EXCEPTION in getPaymentPage: $e');
       notifyListeners();
       return {
         'code': -1,

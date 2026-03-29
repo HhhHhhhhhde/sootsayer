@@ -151,7 +151,7 @@ class _AnalysisItem extends StatelessWidget {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    '${_formatSize(result.fileSize)}  •  ${_formatDate(result.submitTime)}',
+                    '${_formatDate(result.submitTime)}',
                     style:
                         TextStyle(fontSize: 12, color: Colors.grey[600]),
                   ),

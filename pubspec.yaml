@@ -23,6 +23,7 @@ dependencies:
   crypto: ^3.0.3
   webview_flutter: ^4.4.2
   webview_flutter_android: ^4.3.0
+  lottie: ^3.3.0
 
 dev_dependencies:
   flutter_test:
@@ -31,5 +32,6 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-#  assets:
-#    - assets/images/
+  assets:
+    - assets/lottie/sunny.json
+    - assets/lottie/cloudy.json

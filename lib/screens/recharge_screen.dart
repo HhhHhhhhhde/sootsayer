@@ -112,12 +112,15 @@ class _RechargeScreenState extends State<RechargeScreen> {
     setState(() => _isProcessing = true);
 
     final payMethod = _selectedPaymentMethod == 'wechat' ? 'WECHAT' : 'ALIPAY';
+    debugPrint('[Recharge] calling getPaymentPage: amount=$amount method=$payMethod');
     final paymentPage = await authProvider.getPaymentPage(amount, payMethod);
+    debugPrint('[Recharge] getPaymentPage result: $paymentPage');
 
     if (!mounted) return;
     setState(() => _isProcessing = false);
 
     if (paymentPage == null || paymentPage['code'] != 200) {
+      debugPrint('[Recharge] ERROR: payment page failed, code=${paymentPage?["code"]} msg=${paymentPage?["message"]}');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(authProvider.errorMessage ?? paymentPage?['message']?.toString() ?? '创建支付失败'),
@@ -129,6 +132,7 @@ class _RechargeScreenState extends State<RechargeScreen> {
 
     final htmlContent = paymentPage['htmlContent']?.toString() ?? '';
     final outTradeNo = paymentPage['outTradeNo']?.toString() ?? '';
+    debugPrint('[Recharge] navigating to PaymentPageScreen: outTradeNo=$outTradeNo htmlLen=${htmlContent.length}');
 
     if (htmlContent.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
