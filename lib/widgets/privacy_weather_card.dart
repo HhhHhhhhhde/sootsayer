@@ -104,17 +104,6 @@ class PrivacyWeatherCard extends StatelessWidget {
                               color: cs.onSurface,
                             ),
                           ),
-                          if (isLoading) ...[
-                            const SizedBox(width: 8),
-                            SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: cs.primary,
-                              ),
-                            ),
-                          ],
                         ],
                       ),
                       const SizedBox(height: 6),

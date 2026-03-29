@@ -66,8 +66,8 @@ class DashboardScreen extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            const PrivacyWeatherCard(),
-            const SizedBox(height: 16),
+            // const PrivacyWeatherCard(),
+            // const SizedBox(height: 16),
 
             // App Submit Card
             const AppSubmitCard(),
