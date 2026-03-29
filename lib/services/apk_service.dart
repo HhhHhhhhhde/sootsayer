@@ -1,253 +1,133 @@
-import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'dart:io';
-import 'package:archive/archive_io.dart';
+
+import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 
 class ApkService {
-  static const platform = MethodChannel('com.example.myapp/apk');
   static const String backendUrl = 'http://10.0.2.2:8080/api';
 
-  static Future<List<Map<String, dynamic>>> getInstalledApps() async {
-    try {
-      final List<dynamic> result = await platform.invokeMethod('getInstalledApps');
-      return result.map((app) => Map<String, dynamic>.from(app)).toList();
-    } on PlatformException catch (e) {
-      print("Failed to get installed apps: '${e.message}'.");
-      return [];
-    }
-  }
-
-  static Future<Map<String, dynamic>?> extractApk(String packageName) async {
-    try {
-      final Map<dynamic, dynamic> result = await platform.invokeMethod(
-        'extractApk',
-        {'packageName': packageName},
-      );
-      return Map<String, dynamic>.from(result);
-    } on PlatformException catch (e) {
-      print("Failed to extract APK: '${e.message}'.");
-      return null;
-    }
-  }
-
+  /// Uploads an APK file at [apkPath] to the backend task endpoint.
+  /// Returns a map with `success` and `taskId` on success, or `null` on failure.
+  ///
+  /// API: POST /api/tasks (multipart/form-data)
+  /// Response: { "code": 200, "data": <taskId as int> }
   static Future<Map<String, dynamic>?> uploadApkToBackend(
-    String apkPathOrDir,
+    String apkPath,
     String appName,
     String packageName,
     String versionName,
     String token,
   ) async {
     try {
-      // Validate input
-      if (apkPathOrDir.isEmpty) {
-        print("APK path is empty");
+      if (apkPath.isEmpty) {
+        debugPrint('APK path is empty');
         return null;
       }
 
-      // Check if it's a directory or file
-      final pathEntity = FileSystemEntity.typeSync(apkPathOrDir);
-      File fileToUpload;
-
- if (pathEntity == FileSystemEntityType.directory) {
- // 如果是目录（可能包含多个 split目录），先合并所有 split APK 再打包
- print("APK path is a directory, preparing merged split APK artifact");
- fileToUpload = await _prepareMergedSplitsZip(apkPathOrDir);
-
- if (!fileToUpload.existsSync()) {
- print("Failed to create merged split zip for: $apkPathOrDir");
- return null;
- }
- } else {
-        // It's a file
-        fileToUpload = File(apkPathOrDir);
-        if (!fileToUpload.existsSync()) {
-          print("APK file not found: $apkPathOrDir");
-          return null;
-        }
+      final fileToUpload = File(apkPath);
+      if (!fileToUpload.existsSync()) {
+        debugPrint('APK file not found: $apkPath');
+        return null;
       }
 
       final fileSize = fileToUpload.lengthSync();
       if (fileSize == 0) {
-        print("File is empty: ${fileToUpload.path}");
+        debugPrint('APK file is empty: $apkPath');
         return null;
       }
 
-      // Persist file to cache directory before uploading
-      final persistedFilePath = await _persistFileToCache(fileToUpload.path);
-      print("Uploading file: $persistedFilePath (${fileSize} bytes)");
+      // Streaming SHA-256 — safe for large APKs (avoids OOM).
+      final apkHash = await _computeSha256Stream(fileToUpload);
+
+      // Copy to cache so the file remains accessible during the upload.
+      final persistedPath = await _persistFileToCache(apkPath);
+      debugPrint('Uploading APK: $persistedPath ($fileSize bytes)');
 
       final request = http.MultipartRequest(
         'POST',
         Uri.parse('$backendUrl/tasks'),
       );
-
       request.headers['Authorization'] = 'Bearer $token';
+      request.fields['apkName'] =
+          appName.isNotEmpty ? appName : path.basename(apkPath);
+      request.fields['apkSize'] = fileSize.toString();
+      request.fields['apkHash'] = apkHash;
       request.files.add(
-        await http.MultipartFile.fromPath('file', persistedFilePath),
+        await http.MultipartFile.fromPath('file', persistedPath),
       );
 
       final response = await request.send();
       final responseBody = await response.stream.bytesToString();
-
-      print("Upload response status: ${response.statusCode}");
-      print("Upload response body: $responseBody");
+      debugPrint('Upload response status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
-        // Parse JSON response
-        final Map<String, dynamic> jsonResponse = _parseJson(responseBody);
-        if (jsonResponse['code'] == 200 && jsonResponse['data'] != null) {
+        final Map<String, dynamic> jsonResp = _parseJson(responseBody);
+        final code = jsonResp['code'];
+        final isSuccess = code == 200 || code == 0;
+        if (isSuccess && jsonResp['data'] != null) {
+          final taskId = jsonResp['data'];
           return {
             'success': true,
-            'taskId': jsonResponse['data']['taskId'],
+            'taskId': taskId,
             'appName': appName,
             'packageName': packageName,
             'versionName': versionName,
-            'fileName': jsonResponse['data']['fileName'],
-            'status': jsonResponse['data']['status'],
-            'createTime': jsonResponse['data']['createTime'],
           };
         }
       }
-      print("Upload failed with status: ${response.statusCode}");
+
+      debugPrint('Upload failed with status: ${response.statusCode}');
       return null;
     } catch (e) {
-      print("Failed to upload APK: $e");
+      debugPrint('Failed to upload APK: $e');
       return null;
     }
+  }
+
+  /// Computes SHA-256 of [file] using BytesBuilder streaming.
+  /// BytesBuilder(copy:false) holds chunk references without copying until
+  /// toBytes() is called, keeping per-chunk memory usage low.
+  static Future<String> _computeSha256Stream(File file) async {
+    final digest = await file.openRead().transform(sha256).first;
+    return digest.toString();
   }
 
   static Future<String> _persistFileToCache(String sourceFilePath) async {
     try {
       final sourceFile = File(sourceFilePath);
-      if (!sourceFile.existsSync()) {
-        print("Source file not found: $sourceFilePath");
-        return sourceFilePath;
-      }
-
       final cacheDir = await getApplicationCacheDirectory();
       final persistDir = Directory('${cacheDir.path}/apk_cache');
-      
       if (!persistDir.existsSync()) {
         persistDir.createSync(recursive: true);
       }
-
       final fileName = path.basename(sourceFilePath);
-      final persistedFilePath = '${persistDir.path}/$fileName';
-      
-      print("Persisting file from $sourceFilePath to $persistedFilePath");
-      await sourceFile.copy(persistedFilePath);
-      
-      return persistedFilePath;
+      final dest = '${persistDir.path}/$fileName';
+      await sourceFile.copy(dest);
+      return dest;
     } catch (e) {
-      print("Error persisting file: $e");
+      debugPrint('Error persisting file to cache: $e');
       return sourceFilePath;
     }
   }
 
- static Future<File> _prepareMergedSplitsZip(String rootDirPath) async {
- final rootDir = Directory(rootDirPath);
- if (!rootDir.existsSync()) {
- throw Exception('Directory not found: $rootDirPath');
- }
-
- final allEntities = rootDir.listSync(recursive: true);
- final apkFiles = allEntities
- .whereType<File>()
- .where((f) => f.path.toLowerCase().endsWith('.apk'))
- .toList();
-
- if (apkFiles.isEmpty) {
- throw Exception('No APK files found under: $rootDirPath');
- }
-
- // 检测是否存在多个子目录（用户要求多目录时在前端做合并）
- final topLevelDirs = rootDir
- .listSync()
- .whereType<Directory>()
- .map((d) => d.path)
- .toSet();
- if (topLevelDirs.length >1) {
- print('Detected multiple split directories: ${topLevelDirs.toList()}');
- print('Merging split APK files from multiple directories on frontend');
- }
-
- final cacheDir = await getApplicationCacheDirectory();
- final mergeRoot = Directory('${cacheDir.path}/merged_splits');
- if (!mergeRoot.existsSync()) {
- mergeRoot.createSync(recursive: true);
- }
-
- final mergedDirName =
- 'merged_${DateTime.now().millisecondsSinceEpoch}_${path.basename(rootDirPath)}';
- final mergedDir = Directory('${mergeRoot.path}/$mergedDirName');
- mergedDir.createSync(recursive: true);
-
- final usedNames = <String>{};
- for (final apk in apkFiles) {
- final relativePath = path.relative(apk.path, from: rootDir.path);
- final sanitizedRelative = relativePath.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-
- var targetName = sanitizedRelative;
- var index =1;
- while (usedNames.contains(targetName)) {
- final base = path.basenameWithoutExtension(sanitizedRelative);
- targetName = '${base}_$index.apk';
- index++;
- }
- usedNames.add(targetName);
-
- final targetFile = File('${mergedDir.path}/$targetName');
- await apk.copy(targetFile.path);
- }
-
- final zipPath = '${mergedDir.path}.zip';
- return _compressDirectoryToZip(mergedDir.path, zipPath);
- }
-
- static Future<File> _compressDirectoryToZip(String dirPath, String zipPath) async {
- final dir = Directory(dirPath);
- final encoder = ZipFileEncoder();
-
- encoder.create(zipPath);
-
- // Add all files from directory to zip
- final files = dir.listSync(recursive: true);
- for (var file in files) {
- if (file is File) {
- final relativePath = path.relative(file.path, from: dir.path);
- encoder.addFile(file, relativePath);
- }
- }
-
- encoder.close();
- print("Zip file created: $zipPath");
-
- return File(zipPath);
- }
-
   static Map<String, dynamic> _parseJson(String jsonString) {
     try {
-      // Simple JSON parsing without external dependency
-      if (jsonString.contains('"code":200')) {
-        final taskIdMatch = RegExp(r'"taskId":(\d+)').firstMatch(jsonString);
-        final fileNameMatch = RegExp(r'"fileName":"([^"]+)"').firstMatch(jsonString);
-        final statusMatch = RegExp(r'"status":"([^"]+)"').firstMatch(jsonString);
-        
+      return jsonDecode(jsonString) as Map<String, dynamic>;
+    } catch (_) {
+      final codeMatch =
+          RegExp(r'"code"\s*:\s*(\d+)').firstMatch(jsonString);
+      final dataMatch =
+          RegExp(r'"data"\s*:\s*(\d+)').firstMatch(jsonString);
+      if (codeMatch != null) {
         return {
-          'code': 200,
-          'data': {
-            'taskId': taskIdMatch != null ? int.parse(taskIdMatch.group(1)!) : 0,
-            'fileName': fileNameMatch?.group(1) ?? '',
-            'status': statusMatch?.group(1) ?? 'PENDING',
-            'createTime': DateTime.now().toIso8601String(),
-          }
+          'code': int.parse(codeMatch.group(1)!),
+          'data': dataMatch != null ? int.parse(dataMatch.group(1)!) : null,
         };
       }
-      return {'code': 500};
-    } catch (e) {
-      print("JSON parsing error: $e");
       return {'code': 500};
     }
   }

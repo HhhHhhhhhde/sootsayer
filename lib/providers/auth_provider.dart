@@ -1,10 +1,4 @@
 import 'package:flutter/foundation.dart';
-import 'dart:convert';
-import 'dart:math';
-import '../services/api_service.dart';
-import 'package:flutter/foundation.dart';
-import 'dart:convert';
-import 'dart:math';
 import '../services/api_service.dart';
 
 class AuthProvider extends ChangeNotifier {
@@ -13,8 +7,7 @@ class AuthProvider extends ChangeNotifier {
   String? _sessionToken;
   bool _isLoading = false;
   String? _errorMessage;
-  
-  // 用户信息
+
   Map<String, dynamic>? _userInfo;
 
   bool get isLoggedIn => _isLoggedIn;
@@ -33,7 +26,6 @@ class AuthProvider extends ChangeNotifier {
       final result = await ApiService.sendVerifyCode(email, type);
       _isLoading = false;
 
-      // 支持 200 和 0 两种成功码
       final code = result['code'];
       final isSuccess = code == 200 || code == 0 || code == '200' || code == '0';
 
@@ -73,12 +65,10 @@ class AuthProvider extends ChangeNotifier {
       );
       _isLoading = false;
 
-      // 支持 200 和 0 两种成功码
       final code = result['code'];
       final isSuccess = code == 200 || code == 0 || code == '200' || code == '0';
 
       if (isSuccess) {
-        // 注册成功后自动登录以获取真正的 JWT token
         return await login(email, password);
       } else {
         _errorMessage = result['message'] ?? '注册失败';
@@ -102,23 +92,14 @@ class AuthProvider extends ChangeNotifier {
       final result = await ApiService.login(email, password);
       _isLoading = false;
 
-      print('AuthProvider login result: $result');
-      print('Code value: ${result['code']}, type: ${result['code'].runtimeType}');
-
-      // 检查响应码，支持 200 和 0 两种格式
       final code = result['code'];
       final isSuccess = code == 200 || code == 0 || code == '200' || code == '0';
-
-      print('isSuccess: $isSuccess');
 
       if (isSuccess) {
         _isLoggedIn = true;
         _userEmail = email;
-        
-        // 从 data 中获取 token（后端返回的是 JWT token 字符串）
-        _sessionToken = result['data']?.toString() ?? 'token_${DateTime.now().millisecondsSinceEpoch}';
-        
-        print('Login successful, isLoggedIn: $_isLoggedIn, token: $_sessionToken');
+        _sessionToken = result['data']?.toString() ??
+            'token_${DateTime.now().millisecondsSinceEpoch}';
         notifyListeners();
         return true;
       } else {
@@ -169,7 +150,6 @@ class AuthProvider extends ChangeNotifier {
       );
       _isLoading = false;
 
-      // 支持 200 和 0 两种成功码
       final code = result['code'];
       final isSuccess = code == 200 || code == 0 || code == '200' || code == '0';
 
@@ -198,10 +178,10 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final result = await ApiService.resetPassword(email, verifyCode, newPassword);
+      final result =
+          await ApiService.resetPassword(email, verifyCode, newPassword);
       _isLoading = false;
 
-      // 支持 200 和 0 两种成功码
       final code = result['code'];
       final isSuccess = code == 200 || code == 0 || code == '200' || code == '0';
 
@@ -229,7 +209,6 @@ class AuthProvider extends ChangeNotifier {
       final result = await ApiService.getUserInfo(_sessionToken ?? '');
       _isLoading = false;
 
-      // 支持 200 和 0 两种成功码
       final code = result['code'];
       final isSuccess = code == 200 || code == 0 || code == '200' || code == '0';
 
@@ -316,7 +295,11 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  Future<Map<String, dynamic>?> getPaymentPage(double amount, String payMethod) async {
+  /// 获取支付页面数据（outTradeNo + HTML表单）.
+  /// 后端现在返回 PaymentResult 结构体，outTradeNo 在 JSON 中直接可用，
+  /// 无需在 WebView 中解析 HTML.
+  Future<Map<String, dynamic>?> getPaymentPage(
+      double amount, String payMethod) async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
@@ -330,7 +313,8 @@ class AuthProvider extends ChangeNotifier {
       _isLoading = false;
 
       final code = result['code'];
-      final isSuccess = code == 200 || code == 0 || code == '200' || code == '0';
+      final isSuccess =
+          code == 200 || code == 0 || code == '200' || code == '0';
       if (!isSuccess) {
         _errorMessage = result['msg'] ?? result['message'] ?? '获取支付页面失败';
         notifyListeners();
@@ -342,26 +326,41 @@ class AuthProvider extends ChangeNotifier {
         };
       }
 
- final data = result['data'];
- print('responseData.data 原文: ${data is String ? data : jsonEncode(data)}');
- String htmlContent = '';
- String outTradeNo = '';
-
-      if (data is String) {
-        htmlContent = data;
-
-        final outTradeNoMatch = RegExp(r'&quot;out_trade_no&quot;:&quot;([^&]+)&quot;')
-            .firstMatch(data);
-        if (outTradeNoMatch != null) {
-          outTradeNo = outTradeNoMatch.group(1) ?? '';
-        }
-      } else if (data is Map<String, dynamic>) {
-        htmlContent = data['html']?.toString() ?? data['htmlContent']?.toString() ?? '';
-        outTradeNo = data['outTradeNo']?.toString() ?? data['out_trade_no']?.toString() ?? '';
+      // 后端返回 Result<PaymentResult>:
+      // data = { outTradeNo, paymentUrl (支付宝HTML表单), qrCode, expireTime }
+      final data = result['data'];
+      if (data is! Map<String, dynamic>) {
+        _errorMessage = '支付数据格式错误';
+        notifyListeners();
+        return {
+          'code': -1,
+          'message': _errorMessage,
+          'htmlContent': null,
+          'outTradeNo': null,
+        };
       }
+
+      final htmlContent = data['paymentUrl']?.toString() ??
+          data['htmlContent']?.toString() ??
+          data['html']?.toString() ??
+          '';
+      final outTradeNo = data['outTradeNo']?.toString() ??
+          data['out_trade_no']?.toString() ??
+          '';
 
       if (htmlContent.isEmpty) {
         _errorMessage = '支付页面数据为空';
+        notifyListeners();
+        return {
+          'code': -1,
+          'message': _errorMessage,
+          'htmlContent': null,
+          'outTradeNo': null,
+        };
+      }
+
+      if (outTradeNo.isEmpty) {
+        _errorMessage = '订单号缺失，无法完成支付验证';
         notifyListeners();
         return {
           'code': -1,
@@ -394,25 +393,19 @@ class AuthProvider extends ChangeNotifier {
     try {
       final result = await ApiService.getBalance(_sessionToken ?? '');
 
-      print('getBalance result: $result');
-
       final code = result['code'];
-      final isSuccess = code == 200 || code == 0 || code == '200' || code == '0';
+      final isSuccess =
+          code == 200 || code == 0 || code == '200' || code == '0';
 
       if (isSuccess && result['data'] != null) {
         final data = result['data'];
-        if (data is num) {
-          return data.toDouble();
-        } else if (data is String) {
-          return double.tryParse(data);
-        }
+        if (data is num) return data.toDouble();
+        if (data is String) return double.tryParse(data);
         return 0.0;
       } else {
-        print('Failed to get balance: ${result['message']}');
         return null;
       }
     } catch (e) {
-      print('Error getting balance: $e');
       return null;
     }
   }
@@ -424,10 +417,9 @@ class AuthProvider extends ChangeNotifier {
         outTradeNo,
       );
 
-      print('verifyPayment result: $result');
-
       final code = result['code'];
-      final isSuccess = code == 200 || code == 0 || code == '200' || code == '0';
+      final isSuccess =
+          code == 200 || code == 0 || code == '200' || code == '0';
 
       if (isSuccess && result['data'] != null) {
         return result['data'].toString();
@@ -436,7 +428,6 @@ class AuthProvider extends ChangeNotifier {
         return null;
       }
     } catch (e) {
-      print('Error verifying payment: $e');
       return null;
     }
   }
@@ -447,11 +438,13 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final result = await ApiService.subscribePlan(_sessionToken ?? '', planType);
+      final result =
+          await ApiService.subscribePlan(_sessionToken ?? '', planType);
       _isLoading = false;
 
       final code = result['code'];
-      final isSuccess = code == 200 || code == 0 || code == '200' || code == '0';
+      final isSuccess =
+          code == 200 || code == 0 || code == '200' || code == '0';
 
       if (isSuccess) {
         notifyListeners();
@@ -471,10 +464,12 @@ class AuthProvider extends ChangeNotifier {
 
   Future<Map<String, dynamic>?> getCurrentSubscription() async {
     try {
-      final result = await ApiService.getCurrentSubscription(_sessionToken ?? '');
+      final result =
+          await ApiService.getCurrentSubscription(_sessionToken ?? '');
 
       final code = result['code'];
-      final isSuccess = code == 200 || code == 0 || code == '200' || code == '0';
+      final isSuccess =
+          code == 200 || code == 0 || code == '200' || code == '0';
 
       if (isSuccess) {
         return result['data'] as Map<String, dynamic>?;

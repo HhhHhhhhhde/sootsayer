@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:io';
@@ -16,7 +17,7 @@ class ApiService {
         'type': type,
       };
       
-      print('Send verify code request: $requestBody');
+      debugPrint('Send verify code request: $requestBody');
       
       final response = await http.post(
         Uri.parse('$baseUrl/auth/verify-code/send'),
@@ -24,8 +25,7 @@ class ApiService {
         body: jsonEncode(requestBody),
       );
 
-      print('Send verify code response status: ${response.statusCode}');
-      print('Send verify code response body: ${response.body}');
+      debugPrint('Send verify code response status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
@@ -67,7 +67,7 @@ class ApiService {
         requestBody['phone'] = phone;
       }
       
-      print('Register request: $requestBody');
+      debugPrint('Register request: $requestBody');
       
       final response = await http.post(
         Uri.parse('$baseUrl/auth/register'),
@@ -75,8 +75,7 @@ class ApiService {
         body: jsonEncode(requestBody),
       );
 
-      print('Register response status: ${response.statusCode}');
-      print('Register response body: ${response.body}');
+      debugPrint('Register response status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
@@ -113,7 +112,7 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final result = jsonDecode(response.body);
-        print('Login response: $result');
+        debugPrint('Login response: $result');
         return result;
       } else {
         return {
@@ -210,7 +209,7 @@ class ApiService {
         'newPassword': newPassword,
       };
       
-      print('Reset password request: $requestBody');
+      debugPrint('Reset password request: $requestBody');
       
       final response = await http.post(
         Uri.parse('$baseUrl/auth/password/reset'),
@@ -218,8 +217,7 @@ class ApiService {
         body: jsonEncode(requestBody),
       );
 
-      print('Reset password response status: ${response.statusCode}');
-      print('Reset password response body: ${response.body}');
+      debugPrint('Reset password response status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
@@ -242,7 +240,6 @@ class ApiService {
   // 获取用户信息
   static Future<Map<String, dynamic>> getUserInfo(String token) async {
     try {
-      print('Get user info with token: $token');
       
       final response = await http.get(
         Uri.parse('$baseUrl/auth/user/info'),
@@ -252,8 +249,7 @@ class ApiService {
         },
       );
 
-      print('Get user info response status: ${response.statusCode}');
-      print('Get user info response body: ${response.body}');
+      debugPrint('Get user info response status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
@@ -276,9 +272,8 @@ class ApiService {
   // 上传文件
   static Future<Map<String, dynamic>> uploadFile(String filePath, String token) async {
     try {
-      print('Upload file: $filePath with token: $token');
-      print(1);
-      print('$token');
+      debugPrint('Upload file:');
+      debugPrint('$token');
       
       final file = File(filePath);
       if (!file.existsSync()) {
@@ -302,8 +297,7 @@ class ApiService {
       final response = await request.send();
       final responseBody = await response.stream.bytesToString();
 
-      print('Upload file response status: ${response.statusCode}');
-      print('Upload file response body: $responseBody');
+      debugPrint('Upload file response status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         return jsonDecode(responseBody);
@@ -340,8 +334,7 @@ class ApiService {
         }),
       );
 
-      print('Erase account response status: ${response.statusCode}');
-      print('Erase account response body: ${response.body}');
+      debugPrint('Erase account response status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
@@ -383,8 +376,7 @@ class ApiService {
         },
       );
 
-      print('Recharge response status: ${response.statusCode}');
-      print('Recharge response body: ${response.body}');
+      debugPrint('Recharge response status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         final result = jsonDecode(response.body);
@@ -539,6 +531,111 @@ class ApiService {
  };
  }
  }
+
+  // 取消任务
+  static Future<Map<String, dynamic>> cancelTask(
+    String token,
+    int taskId,
+  ) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/tasks/$taskId/cancel'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      if (response.statusCode == 200) return jsonDecode(response.body);
+      return {'code': response.statusCode, 'message': '取消任务失败', 'data': null};
+    } catch (e) {
+      return {'code': -1, 'message': '网络错误: $e', 'data': null};
+    }
+  }
+
+  // 重试任务
+  static Future<Map<String, dynamic>> retryTask(
+    String token,
+    int taskId,
+  ) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/tasks/$taskId/retry'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      if (response.statusCode == 200) return jsonDecode(response.body);
+      return {'code': response.statusCode, 'message': '重试任务失败', 'data': null};
+    } catch (e) {
+      return {'code': -1, 'message': '网络错误: $e', 'data': null};
+    }
+  }
+
+  // 获取语义分析报告
+  static Future<Map<String, dynamic>> getSemanticReport(
+    String token,
+    int taskId,
+  ) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/reports/$taskId/semantic'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      if (response.statusCode == 200) return jsonDecode(response.body);
+      return {'code': response.statusCode, 'message': '获取报告失败', 'data': null};
+    } catch (e) {
+      return {'code': -1, 'message': '网络错误: $e', 'data': null};
+    }
+  }
+
+  // 获取任务历史列表
+  static Future<Map<String, dynamic>> getTasks(
+    String token, {
+    int page = 0,
+    int size = 50,
+  }) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/tasks?page=$page&size=$size'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return {'code': response.statusCode, 'message': '获取任务列表失败', 'data': null};
+    } catch (e) {
+      return {'code': -1, 'message': '网络错误: $e', 'data': null};
+    }
+  }
+
+  // 获取单个任务状态
+  static Future<Map<String, dynamic>> getTaskStatus(
+    String token,
+    int taskId,
+  ) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/tasks/$taskId/status'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return {'code': response.statusCode, 'message': '获取任务状态失败', 'data': null};
+    } catch (e) {
+      return {'code': -1, 'message': '网络错误: $e', 'data': null};
+    }
+  }
 
   // 获取当前订阅
   static Future<Map<String, dynamic>> getCurrentSubscription(String token) async {

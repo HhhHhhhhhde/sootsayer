@@ -5,34 +5,27 @@ import 'screens/login_screen.dart';
 import 'providers/theme_provider.dart';
 import 'providers/analysis_provider.dart';
 import 'providers/auth_provider.dart';
-import 'models/analysis_result.dart';
 
 void main() {
-  final analysisProvider = AnalysisProvider();
-  
-  // 添加test.apk假数据
-  analysisProvider.addResult(
-    AnalysisResult(
-      id: 'test_001',
-      appName: 'test',
-      packageName: 'com.example.test',
-      versionName: '1.0.0',
-      apkPath: '/storage/emulated/0/Download/test.apk',
-      fileSize: 5242880, // 5MB
-      submitTime: DateTime.now().subtract(const Duration(hours: 2)),
-      status: 'completed',
-      vulnerabilities: 5,
-      riskLevel: 'high',
-      taskId: 1001,
-    ),
-  );
-
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
-        ChangeNotifierProvider(create: (_) => analysisProvider),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
+        // AnalysisProvider watches AuthProvider: fetches tasks & starts
+        // polling automatically when the user logs in.
+        ChangeNotifierProxyProvider<AuthProvider, AnalysisProvider>(
+          create: (_) => AnalysisProvider(),
+          update: (_, auth, analysis) {
+            final provider = analysis ?? AnalysisProvider();
+            if (auth.isLoggedIn && auth.sessionToken != null) {
+              provider.setToken(auth.sessionToken!);
+            } else {
+              provider.clearToken();
+            }
+            return provider;
+          },
+        ),
       ],
       child: const MyApp(),
     ),

@@ -1,9 +1,13 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../services/apk_service.dart';
+
 import '../providers/analysis_provider.dart';
 import '../providers/auth_provider.dart';
 import '../models/analysis_result.dart';
+import '../services/apk_service.dart';
 
 class AppSubmitScreen extends StatefulWidget {
   final bool isBatch;
@@ -15,118 +19,135 @@ class AppSubmitScreen extends StatefulWidget {
 }
 
 class _AppSubmitScreenState extends State<AppSubmitScreen> {
-  List<Map<String, dynamic>> _installedApps = [];
-  Set<String> _selectedPackages = {};
-  bool _isLoading = true;
-  bool _isExtracting = false;
-  String _searchQuery = '';
+  List<Map<String, String>> _selectedFiles = [];
+  bool _isUploading = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _loadInstalledApps();
-  }
-
-  Future<void> _loadInstalledApps() async {
-    setState(() => _isLoading = true);
-    final apps = await ApkService.getInstalledApps();
+  Future<void> _pickApkFiles() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['apk'],
+      allowMultiple: widget.isBatch,
+    );
+    if (result == null || result.files.isEmpty) return;
     setState(() {
-      _installedApps = apps;
-      _isLoading = false;
+      _selectedFiles = result.files
+          .where((f) => f.path != null)
+          .map((f) {
+            final raw = f.name;
+            final name =
+                raw.endsWith('.apk') ? raw.substring(0, raw.length - 4) : raw;
+            return {'name': name, 'path': f.path!};
+          })
+          .toList();
     });
   }
 
-  List<Map<String, dynamic>> get _filteredApps {
-    if (_searchQuery.isEmpty) return _installedApps;
-    return _installedApps.where((app) {
-      final appName = app['appName']?.toString().toLowerCase() ?? '';
-      final packageName = app['packageName']?.toString().toLowerCase() ?? '';
-      final query = _searchQuery.toLowerCase();
-      return appName.contains(query) || packageName.contains(query);
-    }).toList();
+  void _removeFile(int index) =>
+      setState(() => _selectedFiles.removeAt(index));
+
+  Future<String?> _showRenameDialog(String defaultName) async {
+    final controller = TextEditingController(text: defaultName);
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('修改 APK 名称'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'APK 名称',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (_) =>
+              Navigator.pop(ctx, controller.text.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, null),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final name = controller.text.trim();
+              Navigator.pop(ctx, name.isNotEmpty ? name : defaultName);
+            },
+            child: const Text('确认上传'),
+          ),
+        ],
+      ),
+    );
   }
 
-  Future<void> _extractSelectedApps() async {
-    if (_selectedPackages.isEmpty) {
+  Future<void> _uploadSelected() async {
+    if (_selectedFiles.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请至少选择一个应用')),
+        const SnackBar(content: Text('请先选择 APK 文件')),
       );
       return;
     }
 
-    setState(() => _isExtracting = true);
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final token = authProvider.sessionToken ?? '';
+    if (token.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('未登录，请重新登录'), backgroundColor: Colors.red),
+      );
+      return;
+    }
 
-    final analysisProvider = Provider.of<AnalysisProvider>(context, listen: false);
+    // Single-file mode: show rename dialog before uploading.
+    List<Map<String, String>> filesToUpload = List.from(_selectedFiles);
+    if (!widget.isBatch && filesToUpload.length == 1) {
+      final chosen = await _showRenameDialog(filesToUpload[0]['name']!);
+      if (chosen == null) return;
+      filesToUpload[0] = {'name': chosen, 'path': filesToUpload[0]['path']!};
+    }
+
+    setState(() => _isUploading = true);
+
+    final analysisProvider =
+        Provider.of<AnalysisProvider>(context, listen: false);
     int successCount = 0;
     int failCount = 0;
 
-    for (final packageName in _selectedPackages) {
+    for (final fileInfo in filesToUpload) {
+      final apkPath = fileInfo['path']!;
+      final appName = fileInfo['name']!;
       try {
-        // Step 1: Extract APK locally
-        print('Extracting APK for package: $packageName');
-        final extractResult = await ApkService.extractApk(packageName);
-        
-        if (extractResult != null && extractResult['success'] == true) {
-          final apkPath = extractResult['outputPath'] ?? '';
-          final appName = extractResult['appName'] ?? '';
-          final versionName = extractResult['versionName'] ?? '';
-          
-          print('APK extracted successfully: $apkPath');
-          
-          // Step 2: Upload APK to backend
-          print('Uploading APK to backend...');
-          final authProvider = Provider.of<AuthProvider>(context, listen: false);
-          final token = authProvider.sessionToken ?? '';
-          
-          if (token.isEmpty) {
-            print('Error: No authentication token available');
-            failCount++;
-            continue;
-          }
-          
-          final uploadResult = await ApkService.uploadApkToBackend(
-            apkPath,
-            appName,
-            packageName,
-            versionName,
-            token,
-          );
-          
-          if (uploadResult != null && uploadResult['success'] == true) {
-            final analysisResult = AnalysisResult(
-              id: uploadResult['taskId'].toString(),
-              appName: appName,
-              packageName: packageName,
-              versionName: versionName,
-              apkPath: apkPath,
-              fileSize: extractResult['size'] ?? 0,
-              submitTime: DateTime.now(),
-              status: 'pending',
-              taskId: uploadResult['taskId'],
-            );
-            analysisProvider.addResult(analysisResult);
-            print('APK uploaded successfully with taskId: ${uploadResult['taskId']}');
-            successCount++;
-          } else {
-            print('Failed to upload APK for package: $packageName');
-            failCount++;
-          }
+        final uploadResult = await ApkService.uploadApkToBackend(
+          apkPath,
+          appName,
+          '',
+          '',
+          token,
+        );
+        if (uploadResult != null && uploadResult['success'] == true) {
+          final fileSize = File(apkPath).lengthSync();
+          analysisProvider.addResult(AnalysisResult(
+            id: uploadResult['taskId'].toString(),
+            taskId: uploadResult['taskId'] as int,
+            appName: appName,
+            apkPath: apkPath,
+            fileSize: fileSize,
+            submitTime: DateTime.now(),
+            status: 'WAITING',
+          ));
+          successCount++;
         } else {
-          print('Failed to extract APK for package: $packageName');
           failCount++;
         }
-      } catch (e) {
-        print('Error processing package $packageName: $e');
+      } catch (_) {
         failCount++;
       }
     }
 
-    setState(() => _isExtracting = false);
-
+    setState(() => _isUploading = false);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('上传完成: 成功 $successCount 个, 失败 $failCount 个'),
+          content: Text('上传完成：成功 $successCount 个，失败 $failCount 个'),
           backgroundColor: failCount > 0 ? Colors.orange : Colors.green,
         ),
       );
@@ -136,147 +157,116 @@ class _AppSubmitScreenState extends State<AppSubmitScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.isBatch ? '批量提交应用' : '提交应用'),
-        actions: [
-          if (_selectedPackages.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Center(
-                child: Chip(
-                  label: Text('已选 ${_selectedPackages.length}'),
-                  backgroundColor: Theme.of(context).primaryColor,
-                  labelStyle: const TextStyle(color: Colors.white),
-                ),
-              ),
-            ),
-        ],
+        title: Text(widget.isBatch ? '批量提交 APK' : '提交 APK'),
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: '搜索应用名称或包名',
-                prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            OutlinedButton.icon(
+              onPressed: _isUploading ? null : _pickApkFiles,
+              icon: const Icon(Icons.folder_open),
+              label: Text(widget.isBatch
+                  ? '从存储中选择 APK 文件（可多选）'
+                  : '从存储中选择 APK 文件'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                textStyle: const TextStyle(fontSize: 15),
               ),
-              onChanged: (value) {
-                setState(() => _searchQuery = value);
-              },
             ),
-          ),
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _filteredApps.isEmpty
-                    ? const Center(child: Text('未找到应用'))
-                    : ListView.builder(
-                        itemCount: _filteredApps.length,
+            const SizedBox(height: 16),
+            if (_selectedFiles.isEmpty)
+              Expanded(
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.android, size: 64, color: Colors.grey[400]),
+                      const SizedBox(height: 12),
+                      Text(
+                        '暂未选择任何 APK 文件',
+                        style:
+                            TextStyle(color: Colors.grey[500], fontSize: 15),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('已选 ${_selectedFiles.length} 个文件',
+                        style: theme.textTheme.titleSmall),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: ListView.separated(
+                        itemCount: _selectedFiles.length,
+                        separatorBuilder: (_, __) =>
+                            const SizedBox(height: 8),
                         itemBuilder: (context, index) {
-                          final app = _filteredApps[index];
-                          final packageName = app['packageName'] ?? '';
-                          final isSelected = _selectedPackages.contains(packageName);
-
+                          final file = _selectedFiles[index];
+                          final sizeBytes =
+                              File(file['path']!).lengthSync();
+                          final sizeMb =
+                              (sizeBytes / (1024 * 1024)).toStringAsFixed(1);
                           return Card(
-                            margin: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 4,
-                            ),
                             child: ListTile(
-                              leading: CircleAvatar(
-                                child: Text(
-                                  (app['appName'] ?? 'A')[0].toUpperCase(),
-                                ),
+                              leading: const Icon(Icons.android,
+                                  color: Colors.green),
+                              title: Text(file['name']!,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis),
+                              subtitle: Text('$sizeMb MB',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.close, size: 18),
+                                onPressed: _isUploading
+                                    ? null
+                                    : () => _removeFile(index),
+                                tooltip: '移除',
                               ),
-                              title: Text(app['appName'] ?? ''),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(packageName),
-                                  if (app['versionName']?.isNotEmpty ?? false)
-                                    Text(
-                                      'v${app['versionName']}',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey[600],
-                                      ),
-                                    ),
-                                ],
-                              ),
-                              trailing: widget.isBatch
-                                  ? Checkbox(
-                                      value: isSelected,
-                                      onChanged: (value) {
-                                        setState(() {
-                                          if (value == true) {
-                                            _selectedPackages.add(packageName);
-                                          } else {
-                                            _selectedPackages.remove(packageName);
-                                          }
-                                        });
-                                      },
-                                    )
-                                  : Radio<String>(
-                                      value: packageName,
-                                      groupValue: _selectedPackages.isEmpty
-                                          ? null
-                                          : _selectedPackages.first,
-                                      onChanged: (value) {
-                                        setState(() {
-                                          _selectedPackages.clear();
-                                          if (value != null) {
-                                            _selectedPackages.add(value);
-                                          }
-                                        });
-                                      },
-                                    ),
-                              onTap: () {
-                                setState(() {
-                                  if (widget.isBatch) {
-                                    if (isSelected) {
-                                      _selectedPackages.remove(packageName);
-                                    } else {
-                                      _selectedPackages.add(packageName);
-                                    }
-                                  } else {
-                                    _selectedPackages.clear();
-                                    _selectedPackages.add(packageName);
-                                  }
-                                });
-                              },
                             ),
                           );
                         },
                       ),
-          ),
-        ],
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: ElevatedButton(
-            onPressed: _isExtracting ? null : _extractSelectedApps,
+            onPressed: _isUploading ? null : _uploadSelected,
             style: ElevatedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 16),
-              backgroundColor: Theme.of(context).primaryColor,
+              backgroundColor: theme.primaryColor,
               foregroundColor: Colors.white,
             ),
-            child: _isExtracting
+            child: _isUploading
                 ? const SizedBox(
                     height: 20,
                     width: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      valueColor:
+                          AlwaysStoppedAnimation<Color>(Colors.white),
                     ),
                   )
                 : Text(
-                    '提取应用 (${_selectedPackages.length})',
+                    _selectedFiles.isEmpty
+                        ? '上传'
+                        : '上传 ${_selectedFiles.length} 个文件',
                     style: const TextStyle(fontSize: 16),
                   ),
           ),
