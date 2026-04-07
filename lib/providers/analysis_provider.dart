@@ -26,8 +26,27 @@ class AnalysisProvider extends ChangeNotifier {
   /// Call this after login, passing the session token.
   void setToken(String token) {
     _token = token;
+    _injectMockTask();
     fetchTasks();
     _startPolling();
+  }
+
+  /// 注入一条用于 UI 演示的伪造已完成任务.
+  void _injectMockTask() {
+    const mockTaskId = -999;
+    final already = _results.any((r) => r.taskId == mockTaskId);
+    if (already) return;
+    _results.insert(0, AnalysisResult(
+      id: mockTaskId.toString(),
+      taskId: mockTaskId,
+      appName: 'com.demo.privacyleak_v2.1.apk',
+      fileSize: 4832640,
+      submitTime: DateTime.now().subtract(const Duration(minutes: 12)),
+      status: 'COMPLETED',
+      updateTime: DateTime.now().subtract(const Duration(minutes: 3)),
+      vulnerabilities: 4,
+      riskLevel: 'HIGH',
+    ));
   }
 
   /// Call this on logout.

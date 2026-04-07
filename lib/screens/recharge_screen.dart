@@ -22,7 +22,10 @@ class _RechargeScreenState extends State<RechargeScreen> {
   @override
   void initState() {
     super.initState();
-    _loadBalance();
+    // Use addPostFrameCallback to ensure context is fully mounted before calling Provider
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadBalance();
+    });
   }
 
   @override
@@ -32,12 +35,37 @@ class _RechargeScreenState extends State<RechargeScreen> {
   }
 
   Future<void> _loadBalance() async {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final balance = await authProvider.getBalance();
-    if (mounted) {
+    // 1. 记录函数开始进入
+    debugPrint('[_loadBalance] 开始加载余额...');
+
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+      // 2. 记录请求发起前的状态（可选，如当前用户ID）
+      debugPrint('[_loadBalance] 正在调用 authProvider.getBalance()...');
+
+      final balance = await authProvider.getBalance();
+
+      // 3. 记录接口返回的原始数据
+      debugPrint('[_loadBalance] 接口返回余额: $balance');
+
+      if (!mounted) {
+        // 4. 重点调试：检查组件是否在异步返回前已被销毁
+        debugPrint('[_loadBalance] 警告：组件已卸载 (mounted == false)，跳过 setState');
+        return;
+      }
+
       setState(() {
         _currentBalance = balance ?? 0.0;
+        // 5. 记录状态更新完成
+        debugPrint('[_loadBalance] 状态已更新，当前内存余额: $_currentBalance');
       });
+
+    } catch (e, stackTrace) {
+      // 6. 异常捕获：这是调试中最关键的部分
+      debugPrint('[_loadBalance] 错误：获取余额失败');
+      debugPrint('错误详情: $e');
+      debugPrint('堆栈信息: $stackTrace');
     }
   }
 

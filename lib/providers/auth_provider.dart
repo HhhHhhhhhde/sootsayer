@@ -329,15 +329,36 @@ class AuthProvider extends ChangeNotifier {
         };
       }
 
-      // 后端返回 Result<PaymentResult>:
-      // data = { outTradeNo, paymentUrl (支付宝HTML表单), qrCode, expireTime }
+      // 后端可能返回两种格式：
+      // 1. PaymentResult 对象 Map：{ outTradeNo, paymentUrl, ... }（新版后端）
+      // 2. 裸 HTML 字符串（旧版后端或后端未重启时）
       final data = result['data'];
       debugPrint('[Payment] data field type: ${data.runtimeType}');
-      debugPrint('[Payment] data value: $data');
 
-      if (data is! Map<String, dynamic>) {
+      String htmlContent = '';
+      String outTradeNo = '';
+
+      if (data is Map<String, dynamic>) {
+        htmlContent = data['paymentUrl']?.toString() ??
+            data['htmlContent']?.toString() ??
+            data['html']?.toString() ??
+            '';
+        outTradeNo = data['outTradeNo']?.toString() ??
+            data['out_trade_no']?.toString() ??
+            '';
+      } else if (data is String && data.isNotEmpty) {
+        // 后端返回裸 HTML 表单字符串
+        htmlContent = data;
+        // out_trade_no 藏在 biz_content 的 value 属性里，以 HTML 实体编码：
+        // value="{&quot;out_trade_no&quot;:&quot;xxx&quot;,...}"
+        final match = RegExp(
+          r'&quot;out_trade_no&quot;:&quot;([^&]+)&quot;',
+        ).firstMatch(htmlContent);
+        outTradeNo = match?.group(1) ?? '';
+        debugPrint('[Payment] extracted outTradeNo from HTML: $outTradeNo');
+      } else {
         _errorMessage = '支付数据格式错误';
-        debugPrint('[Payment] ERROR: data is not a Map, got ${data.runtimeType}');
+        debugPrint('[Payment] ERROR: unexpected data type: ${data.runtimeType}');
         notifyListeners();
         return {
           'code': -1,
@@ -346,14 +367,6 @@ class AuthProvider extends ChangeNotifier {
           'outTradeNo': null,
         };
       }
-
-      final htmlContent = data['paymentUrl']?.toString() ??
-          data['htmlContent']?.toString() ??
-          data['html']?.toString() ??
-          '';
-      final outTradeNo = data['outTradeNo']?.toString() ??
-          data['out_trade_no']?.toString() ??
-          '';
 
       debugPrint('[Payment] outTradeNo: $outTradeNo');
       debugPrint('[Payment] htmlContent length: ${htmlContent.length}');

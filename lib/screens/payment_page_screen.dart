@@ -1,7 +1,5 @@
 import 'dart:async';
-import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -70,12 +68,19 @@ class _PaymentPageScreenState extends State<PaymentPageScreen> {
     return html;
   }
 
+  /// 与表单 `action` 一致，避免 `data:` 源导致提交到网关时 TLS/安全上下文异常。
+  String _alipayHtmlBaseUrl(String html) {
+    if (html.contains('openapi-sandbox.dl.alipaydev.com')) {
+      return 'https://openapi-sandbox.dl.alipaydev.com/';
+    }
+    return 'https://openapi.alipaydev.com/';
+  }
+
   void _initializeWebView() {
     debugPrint('[PaymentPage] initWebView outTradeNo=${widget.outTradeNo} amount=${widget.amount}');
     final html = _normalizeHtml(widget.htmlContent);
-    final htmlBase64 = base64Encode(utf8.encode(html));
-    debugPrint('[PaymentPage] dataURI base64Len=${htmlBase64.length}');
-    final dataUri = Uri.parse('data:text/html;base64,$htmlBase64');
+    final baseUrl = _alipayHtmlBaseUrl(html);
+    debugPrint('[PaymentPage] loadHtmlString baseUrl=$baseUrl htmlLen=${html.length}');
 
     _webViewController = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
@@ -99,10 +104,9 @@ class _PaymentPageScreenState extends State<PaymentPageScreen> {
             _checkPaymentStatus();
           },
           onWebResourceError: (WebResourceError error) {
-            // Only log non-trivial errors
-            if (error.errorCode != -1) {
-              debugPrint('[PaymentPage] WebView error [${error.errorCode}]: ${error.description} url=${error.url}');
-            }
+            debugPrint(
+              '[PaymentPage] WebView error [${error.errorCode}]: ${error.description} url=${error.url}',
+            );
           },
           onNavigationRequest: (NavigationRequest request) {
             final url = request.url;
@@ -116,12 +120,18 @@ class _PaymentPageScreenState extends State<PaymentPageScreen> {
             return NavigationDecision.navigate;
           },
         ),
-      )
-      ..loadRequest(dataUri);
+      );
 
-    // Allow mixed content (HTTP resources inside HTTPS pages) on Android.
-    // Required for Alipay sandbox which loads some assets over HTTP.
-
+    // `data:` 文档无 HTTPS 源，表单 POST 到 openapi.alipaydev.com 时易出现握手失败或连接被重置。
+    // 使用网关域作为 baseUrl，并允许沙箱页内混合内容（Android）。
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final c = _webViewController;
+      if (c.platform is AndroidWebViewController) {
+        await (c.platform as AndroidWebViewController)
+            .setMixedContentMode(MixedContentMode.alwaysAllow);
+      }
+      await c.loadHtmlString(html, baseUrl: baseUrl);
+    });
   }
 
   void _startPaymentStatusCheck() {

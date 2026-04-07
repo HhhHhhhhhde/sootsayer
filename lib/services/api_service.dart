@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+﻿import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:io';
@@ -12,7 +12,7 @@ class ApiService {
     String type,
   ) async {
     try {
-      final requestBody = {
+    final requestBody = {
         'email': email,
         'type': type,
       };
@@ -577,6 +577,42 @@ class ApiService {
     String token,
     int taskId,
   ) async {
+    // 演示用伪造报告（taskId == -999）
+    if (taskId == -999) {
+      return {
+        'code': 200,
+        'message': 'success',
+        'data': {
+          'riskLevel': 'HIGH',
+          'overallScore': 82,
+          'summary': '该 APK 存在 4 条隐私数据泄露路径，其中 3 条为高危漏洞。应用在未经用户明确同意的情况下读取设备唯一标识符（IMEI）并通过网络接口上传至第三方服务器，同时将位置信息写入日志文件，存在严重违反《个人信息保护法》第十三条及 GDPR 第 5 条的行为。',
+          'riskItems': [
+            {
+              'leakId': 1,
+              'isTrueLeak': true,
+              'riskLevel': 'HIGH',
+              'riskScore': 92,
+              'analysis': '应用通过 TelephonyManager.getDeviceId() 获取设备 IMEI 并上传至远程服务器。',
+              'dataFlowExplanation': 'TelephonyManager.getDeviceId() -> HttpURLConnection.setRequestProperty() -> 网络上传',
+              'legalImplications': '违反《个人信息保护法》第十三条，IMEI 属于个人信息，未经授权收集违法。',
+              'remediation': '移除 getDeviceId() 调用，改用随机 UUID 替代设备标识。',
+              'complianceReferences': ['个人信息保护法第十三条', 'GDPR第5条']
+            },
+            {
+              'leakId': 2,
+              'isTrueLeak': false,
+              'riskLevel': 'LOW',
+              'riskScore': 18,
+              'analysis': 'Log.i() 输出用户名调试信息，但 Release 包中已通过 ProGuard 移除，判定为误报。',
+              'dataFlowExplanation': 'userSession.getUsername() -> Log.i(TAG, message) -> Logcat（仅Debug）',
+              'legalImplications': 'Release 版本中不构成实际泄露风险。',
+              'remediation': '使用 BuildConfig.DEBUG 条件判断包裹所有日志调用。',
+              'complianceReferences': ['Android安全最佳实践']
+            },
+          ]
+        }
+      };
+    }
     try {
       final response = await http.get(
         Uri.parse('$baseUrl/reports/$taskId/semantic'),
@@ -666,3 +702,4 @@ class ApiService {
     }
   }
 }
+
