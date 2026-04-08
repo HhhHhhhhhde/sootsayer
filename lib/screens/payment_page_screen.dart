@@ -39,33 +39,9 @@ class _PaymentPageScreenState extends State<PaymentPageScreen> {
     _startPaymentStatusCheck();
   }
 
-  /// Unescape JSON/HTML encoding artifacts that may be present in the
-  /// HTML string returned by the backend, and fix any duplicated gateway paths.
   String _normalizeHtml(String raw) {
-    debugPrint('[PaymentPage] _normalizeHtml input length: ${raw.length}');
-    debugPrint('[PaymentPage] _normalizeHtml input preview: ${raw.length > 300 ? raw.substring(0, 300) : raw}');
-    var html = raw.trim();
-
-    // Unescape JSON-escaped sequences
-    html = html
-        .replaceAll(r'\n', '\n')
-        .replaceAll(r'\r', '\r')
-        .replaceAll(r'\t', '\t')
-        .replaceAll(r'\"', '"')
-        .replaceAll(r"\'", "'");
-
-    // Unescape HTML entities
-    if (html.contains('&quot;')) html = html.replaceAll('&quot;', '"');
-    if (html.contains('&amp;'))  html = html.replaceAll('&amp;', '&');
-
-    // Fix duplicated sandbox gateway path
-    html = html.replaceAll(
-      'https://openapi-sandbox.dl.alipaydev.com/gateway.do/gateway.do',
-      'https://openapi-sandbox.dl.alipaydev.com/gateway.do',
-    );
-
-    debugPrint('[PaymentPage] normalizeHtml output len=${html.length}');
-    return html;
+    // 暂时不做任何清洗，直接把后端返回的 HTML 原样传给 WebView。
+    return raw;
   }
 
   /// 与表单 `action` 一致，避免 `data:` 源导致提交到网关时 TLS/安全上下文异常。
@@ -238,11 +214,25 @@ class _PaymentPageScreenState extends State<PaymentPageScreen> {
         ],
       ),
       floatingActionButton: !_paymentCompleted
-          ? FloatingActionButton.extended(
-              onPressed: () => Navigator.pop(context, false),
-              tooltip: '\u53d6\u6d88\u652f\u4ed8',
-              icon: const Icon(Icons.close),
-              label: const Text('\u53d6\u6d88\u652f\u4ed8'),
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FloatingActionButton.extended(
+                  heroTag: 'pay_refresh',
+                  onPressed: _isVerifying ? null : _verifyPaymentWithBackend,
+                  tooltip: '\u6211\u5df2\u652f\u4ed8\uff0c\u5237\u65b0\u4f59\u989d',
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('\u6211\u5df2\u652f\u4ed8'),
+                ),
+                const SizedBox(width: 12),
+                FloatingActionButton.extended(
+                  heroTag: 'pay_cancel',
+                  onPressed: () => Navigator.pop(context, false),
+                  tooltip: '\u53d6\u6d88\u652f\u4ed8',
+                  icon: const Icon(Icons.close),
+                  label: const Text('\u53d6\u6d88\u652f\u4ed8'),
+                ),
+              ],
             )
           : null,
     );
