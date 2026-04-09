@@ -6,6 +6,10 @@ class AppSubmitCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final iconColor = colorScheme.onSurface;
+    final borderColor = colorScheme.outline.withOpacity(0.65);
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -16,7 +20,7 @@ class AppSubmitCard extends StatelessWidget {
               children: [
                 Icon(
                   Icons.upload_file,
-                  color: Theme.of(context).primaryColor,
+                  color: iconColor,
                 ),
                 const SizedBox(width: 8),
                 const Text(
@@ -82,6 +86,7 @@ class _SubmitButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
@@ -89,7 +94,7 @@ class _SubmitButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 20),
         decoration: BoxDecoration(
           border: Border.all(
-            color: Theme.of(context).primaryColor.withOpacity(0.3),
+            color: colorScheme.outline.withOpacity(0.65),
           ),
           borderRadius: BorderRadius.circular(12),
         ),
@@ -98,7 +103,7 @@ class _SubmitButton extends StatelessWidget {
             Icon(
               icon,
               size: 32,
-              color: Theme.of(context).primaryColor,
+              color: colorScheme.onSurface,
             ),
             const SizedBox(height: 8),
             Text(
@@ -106,7 +111,7 @@ class _SubmitButton extends StatelessWidget {
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
-                color: Theme.of(context).primaryColor,
+                color: colorScheme.onSurface,
               ),
             ),
           ],

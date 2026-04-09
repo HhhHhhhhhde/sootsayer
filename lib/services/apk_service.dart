@@ -88,6 +88,92 @@ class ApkService {
     }
   }
 
+  /// Uploads multiple APK files in one multipart request.
+  /// Response data is expected to be a taskId list in the same order.
+  static Future<List<Map<String, dynamic>>?> uploadApksToBackend(
+    List<Map<String, String>> files,
+    String token,
+  ) async {
+    try {
+      if (files.isEmpty) {
+        return null;
+      }
+
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$backendUrl/tasks/batch'),
+      );
+      request.headers['Authorization'] = 'Bearer $token';
+
+      for (final fileInfo in files) {
+        final apkPath = fileInfo['path'] ?? '';
+        final appName = fileInfo['name'] ?? '';
+        if (apkPath.isEmpty) {
+          return null;
+        }
+
+        final file = File(apkPath);
+        if (!file.existsSync()) {
+          debugPrint('APK file not found: $apkPath');
+          return null;
+        }
+
+        final fileSize = file.lengthSync();
+        if (fileSize == 0) {
+          debugPrint('APK file is empty: $apkPath');
+          return null;
+        }
+
+        final apkHash = await _computeSha256Stream(file);
+        final persistedPath = await _persistFileToCache(apkPath);
+
+        request.fields['apkName'] =
+            appName.isNotEmpty ? appName : path.basename(apkPath);
+        request.fields['apkSize'] = fileSize.toString();
+        request.fields['apkHash'] = apkHash;
+        request.files.add(
+          await http.MultipartFile.fromPath('files', persistedPath),
+        );
+      }
+
+      final response = await request.send();
+      final responseBody = await response.stream.bytesToString();
+      debugPrint('Batch upload response status: ${response.statusCode}');
+
+      if (response.statusCode != 200) {
+        return null;
+      }
+
+      final Map<String, dynamic> jsonResp = _parseJson(responseBody);
+      final code = jsonResp['code'];
+      final isSuccess = code == 200 || code == 0;
+      final data = jsonResp['data'];
+      if (!isSuccess || data is! List) {
+        return null;
+      }
+
+      final taskIds = data;
+      if (taskIds.length != files.length) {
+        debugPrint('Batch upload task count mismatch');
+        return null;
+      }
+
+      final results = <Map<String, dynamic>>[];
+      for (var i = 0; i < files.length; i++) {
+        results.add({
+          'success': true,
+          'taskId': taskIds[i],
+          'appName': files[i]['name'] ?? '',
+          'apkPath': files[i]['path'] ?? '',
+        });
+      }
+      return results;
+    } catch (e) {
+      debugPrint('Failed to batch upload APKs: $e');
+      return null;
+    }
+  }
+
   /// Computes SHA-256 of [file] using BytesBuilder streaming.
   /// BytesBuilder(copy:false) holds chunk references without copying until
   /// toBytes() is called, keeping per-chunk memory usage low.

@@ -103,18 +103,69 @@ class MyApp extends StatelessWidget {
   }
 
   static ThemeData _buildDarkTheme() {
+    const surfaceColor = Color(0xFF121821);
+    const cardColor = Color(0xFF1A2230);
+    const borderColor = Color(0xFFB8C2D9);
+    const textPrimary = Color(0xFFF4F7FF);
+    const textSecondary = Color(0xFFD5DDF0);
+
     return ThemeData(
       useMaterial3: true,
       colorScheme: ColorScheme.fromSeed(
         seedColor: const Color(0xFF2D5BFF),
         brightness: Brightness.dark,
       ),
+      scaffoldBackgroundColor: surfaceColor,
+      dividerColor: borderColor.withOpacity(0.45),
+      textTheme: const TextTheme(
+        bodyLarge: TextStyle(color: textPrimary),
+        bodyMedium: TextStyle(color: textPrimary),
+        bodySmall: TextStyle(color: textSecondary),
+        titleLarge: TextStyle(color: textPrimary),
+        titleMedium: TextStyle(color: textPrimary),
+        titleSmall: TextStyle(color: textSecondary),
+      ),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: surfaceColor,
+        foregroundColor: textPrimary,
+        elevation: 0,
+      ),
       cardTheme: CardThemeData(
+        color: cardColor,
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: const BorderSide(color: Color(0xFF2D2D2D)),
+          side: const BorderSide(color: borderColor),
         ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: cardColor,
+        labelStyle: const TextStyle(color: textSecondary),
+        hintStyle: const TextStyle(color: textSecondary),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: borderColor),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFFDDE5FF), width: 1.4),
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: borderColor),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: textPrimary,
+          side: const BorderSide(color: borderColor),
+          textStyle: const TextStyle(color: textPrimary),
+        ),
+      ),
+      listTileTheme: const ListTileThemeData(
+        iconColor: textSecondary,
+        textColor: textPrimary,
       ),
     );
   }
@@ -141,22 +192,68 @@ class MyApp extends StatelessWidget {
   }
 
   static ThemeData _buildHighSaturationDarkTheme() {
+    const surfaceColor = Color(0xFF1A1315);
+    const cardColor = Color(0xFF241B1F);
+    const borderColor = Color(0xFFF5C8CE);
+    const textPrimary = Color(0xFFFFF3F4);
+    const textSecondary = Color(0xFFFFDDE1);
+
     return ThemeData(
       useMaterial3: true,
       colorScheme: ColorScheme.fromSeed(
         seedColor: const Color(0xFFFF6B6B),
         brightness: Brightness.dark,
       ),
+      scaffoldBackgroundColor: surfaceColor,
+      dividerColor: borderColor.withOpacity(0.45),
+      textTheme: const TextTheme(
+        bodyLarge: TextStyle(color: textPrimary),
+        bodyMedium: TextStyle(color: textPrimary),
+        bodySmall: TextStyle(color: textSecondary),
+        titleLarge: TextStyle(color: textPrimary),
+        titleMedium: TextStyle(color: textPrimary),
+        titleSmall: TextStyle(color: textSecondary),
+      ),
       cardTheme: CardThemeData(
+        color: cardColor,
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: const BorderSide(color: Color(0xFF2D2D2D)),
+          side: const BorderSide(color: borderColor),
         ),
       ),
       appBarTheme: const AppBarTheme(
         backgroundColor: Color(0xFFFF6B6B),
         foregroundColor: Colors.white,
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: cardColor,
+        labelStyle: const TextStyle(color: textSecondary),
+        hintStyle: const TextStyle(color: textSecondary),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: borderColor),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Colors.white, width: 1.4),
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: borderColor),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: textPrimary,
+          side: const BorderSide(color: borderColor),
+          textStyle: const TextStyle(color: textPrimary),
+        ),
+      ),
+      listTileTheme: const ListTileThemeData(
+        iconColor: textSecondary,
+        textColor: textPrimary,
       ),
     );
   }

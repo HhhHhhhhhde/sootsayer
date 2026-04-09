@@ -26,7 +26,7 @@ class _AppSubmitScreenState extends State<AppSubmitScreen> {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['apk'],
-      allowMultiple: widget.isBatch,
+      allowMultiple: true,
     );
     if (result == null || result.files.isEmpty) return;
     setState(() {
@@ -112,22 +112,21 @@ class _AppSubmitScreenState extends State<AppSubmitScreen> {
     int successCount = 0;
     int failCount = 0;
 
-    for (final fileInfo in filesToUpload) {
-      final apkPath = fileInfo['path']!;
-      final appName = fileInfo['name']!;
-      try {
-        final uploadResult = await ApkService.uploadApkToBackend(
-          apkPath,
-          appName,
-          '',
-          '',
-          token,
-        );
-        if (uploadResult != null && uploadResult['success'] == true) {
+    if (filesToUpload.length > 1) {
+      final batchResults =
+          await ApkService.uploadApksToBackend(filesToUpload, token);
+      if (batchResults != null) {
+        for (final item in batchResults) {
+          final apkPath = item['apkPath'] as String? ?? '';
+          final appName = item['appName'] as String? ?? '';
+          if (apkPath.isEmpty) {
+            failCount++;
+            continue;
+          }
           final fileSize = File(apkPath).lengthSync();
           analysisProvider.addResult(AnalysisResult(
-            id: uploadResult['taskId'].toString(),
-            taskId: uploadResult['taskId'] as int,
+            id: item['taskId'].toString(),
+            taskId: item['taskId'] as int,
             appName: appName,
             apkPath: apkPath,
             fileSize: fileSize,
@@ -135,11 +134,40 @@ class _AppSubmitScreenState extends State<AppSubmitScreen> {
             status: 'WAITING',
           ));
           successCount++;
-        } else {
+        }
+      } else {
+        failCount = filesToUpload.length;
+      }
+    } else {
+      for (final fileInfo in filesToUpload) {
+        final apkPath = fileInfo['path']!;
+        final appName = fileInfo['name']!;
+        try {
+          final uploadResult = await ApkService.uploadApkToBackend(
+            apkPath,
+            appName,
+            '',
+            '',
+            token,
+          );
+          if (uploadResult != null && uploadResult['success'] == true) {
+            final fileSize = File(apkPath).lengthSync();
+            analysisProvider.addResult(AnalysisResult(
+              id: uploadResult['taskId'].toString(),
+              taskId: uploadResult['taskId'] as int,
+              appName: appName,
+              apkPath: apkPath,
+              fileSize: fileSize,
+              submitTime: DateTime.now(),
+              status: 'WAITING',
+            ));
+            successCount++;
+          } else {
+            failCount++;
+          }
+        } catch (_) {
           failCount++;
         }
-      } catch (_) {
-        failCount++;
       }
     }
 

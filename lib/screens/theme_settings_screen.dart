@@ -102,6 +102,12 @@ class ThemeSettingsScreen extends StatelessWidget {
     IconData icon,
   ) {
     final isSelected = themeProvider.appTheme == theme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final borderColor = isSelected
+        ? Theme.of(context).primaryColor
+        : colorScheme.outline.withOpacity(0.65);
+    final subtitleColor = Theme.of(context).textTheme.bodySmall?.color ??
+        colorScheme.onSurfaceVariant;
     
     return GestureDetector(
       onTap: () {
@@ -111,9 +117,7 @@ class ThemeSettingsScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           border: Border.all(
-            color: isSelected
-                ? Theme.of(context).primaryColor
-                : Colors.grey.shade300,
+            color: borderColor,
             width: isSelected ? 2 : 1,
           ),
           borderRadius: BorderRadius.circular(12),
@@ -153,7 +157,7 @@ class ThemeSettingsScreen extends StatelessWidget {
                     subtitle,
                     style: TextStyle(
                       fontSize: 12,
-                      color: Colors.grey[600],
+                      color: subtitleColor,
                     ),
                   ),
                 ],
@@ -179,6 +183,10 @@ class ThemeSettingsScreen extends StatelessWidget {
     IconData icon,
   ) {
     final isSelected = themeProvider.themeMode == mode;
+    final colorScheme = Theme.of(context).colorScheme;
+    final borderColor = isSelected
+        ? Theme.of(context).primaryColor
+        : colorScheme.outline.withOpacity(0.65);
     
     return GestureDetector(
       onTap: () {
@@ -188,9 +196,7 @@ class ThemeSettingsScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           border: Border.all(
-            color: isSelected
-                ? Theme.of(context).primaryColor
-                : Colors.grey.shade300,
+            color: borderColor,
             width: isSelected ? 2 : 1,
           ),
           borderRadius: BorderRadius.circular(12),
