@@ -45,3 +45,5 @@ app.*.map.json
 /android/app/release
 
 /backend_md
+
+前端规格.md
